@@ -712,8 +712,7 @@ int main(int argc, char* argv[]) {
                         // Ensure peak physical delay matches this calculation if current_j is initial_peak_params.max_j
                         // This is for display of surrounding points. The main peak's physical_delay comes from calculate_fft_peak_parameters.
                         float amplitude = fft_shifted_amplitude[static_cast<size_t>(initial_peak_params.max_i)][static_cast<size_t>(current_j)];
-                        logger << "      Delay[j=" << current_j << "] (Phys: " << physical_delay << " samp): Amp = "
-                               << amplitude << std::endl;
+                        logger << "      Delay[j=" << current_j << "] (Phys: " << physical_delay << " samp): Amp (%) = " << 100*amplitude << std::endl;
                         x_coords_delay_fit.push_back(static_cast<double>(physical_delay));
                         y_values_delay_fit.push_back(static_cast<double>(amplitude));
                     } else {
@@ -727,7 +726,7 @@ int main(int argc, char* argv[]) {
                     if (delay_fit_result.success) {
                         logger << "      Quadratic Fit (Delay): Refined Peak Delay (samp) = " << delay_fit_result.peak_x
                                 << ", Max Amp Est (%): " << 100* (delay_fit_result.a * delay_fit_result.peak_x * delay_fit_result.peak_x + delay_fit_result.b * delay_fit_result.peak_x + delay_fit_result.c)
-                               << " (Coeffs a=" << delay_fit_result.a << ", b=" << delay_fit_result.b << ", c=" << delay_fit_result.c << ")" << std::endl;
+                               << " (Coeffs a=" << delay_fit_result.a << ", b=" << std::showpos << delay_fit_result.b << std::noshowpos << ", c=" << delay_fit_result.c << ")" << std::endl;
                         refined_delay_from_first_fit_samples = static_cast<float>(delay_fit_result.peak_x);
                     } else {
                         logger << "      Quadratic Fit (Delay) failed: " << delay_fit_result.message << std::endl;
@@ -752,8 +751,7 @@ int main(int argc, char* argv[]) {
                          float physical_rate = (static_cast<float>(current_i) - static_cast<float>(N_rows_padded) / 2.0f) *
                                               ( (std::abs(first_effective_integration_length) > 1e-9f && N_rows_padded > 0) ? (2.0f * (1.0f / (2.0f * first_effective_integration_length)) / static_cast<float>(N_rows_padded)) : 0.0f );
                         float amplitude = fft_shifted_amplitude[static_cast<size_t>(current_i)][static_cast<size_t>(initial_peak_params.max_j)];
-                        logger << "      Rate[i=" << current_i << "] (Phys: " << physical_rate << " Hz): Amp = "
-                               << amplitude << std::endl;
+                        logger << "      Rate[i=" << current_i << "] (Phys: " << std::showpos << physical_rate << std::noshowpos << " Hz): Amp (%) = "<< 100* amplitude << std::endl;
                         x_coords_rate_fit.push_back(static_cast<double>(physical_rate));
                         y_values_rate_fit.push_back(static_cast<double>(amplitude));
                     } else {
@@ -914,7 +912,7 @@ int main(int argc, char* argv[]) {
                             // Consistent with updated sign convention in frinZparamcal.cpp
                             float physical_delay = (static_cast<float>(N_cols_padded_fft) / 2.0f) - static_cast<float>(current_j);
                             float amplitude = iter_fft_shifted_amplitude[static_cast<size_t>(iter_peak_params.max_i)][static_cast<size_t>(current_j)];
-                            if (!params.noconsole) logger << "      Delay[j=" << current_j << "] (PhysRes: " << physical_delay << " samp): Amp = " << amplitude << std::endl;
+                            if (!params.noconsole) logger << "      Delay[j=" << current_j << "] (PhysRes: " << std::showpos << physical_delay << std::noshowpos << " samp): Amp (%) = " << 100* amplitude << std::endl;
                             x_coords_iter_delay_fit.push_back(static_cast<double>(physical_delay));
                             y_values_iter_delay_fit.push_back(static_cast<double>(amplitude));
                         } else { all_points_valid_iter_delay = false; if (!params.noconsole) logger << "      Delay[j=" << current_j << "]: Out of bounds" << std::endl;}
@@ -959,7 +957,8 @@ int main(int argc, char* argv[]) {
                         if (current_i >= 0 && current_i < N_rows_padded && static_cast<size_t>(current_i) < iter_fft_shifted_amplitude.size() && static_cast<size_t>(iter_peak_params.max_j) < iter_fft_shifted_amplitude[static_cast<size_t>(current_i)].size()) {
                             float physical_rate = (static_cast<float>(current_i) - static_cast<float>(N_rows_padded) / 2.0f) * ((std::abs(first_effective_integration_length) > 1e-9f && N_rows_padded > 0) ? (2.0f * (1.0f / (2.0f * first_effective_integration_length)) / static_cast<float>(N_rows_padded)) : 0.0f);
                             float amplitude = iter_fft_shifted_amplitude[static_cast<size_t>(current_i)][static_cast<size_t>(iter_peak_params.max_j)];
-                            if (!params.noconsole) logger << "      Rate[i=" << current_i << "] (PhysRes: " << physical_rate << " Hz): Amp = " << amplitude << std::endl;
+                            if (!params.noconsole) logger << "      Rate[i=" << current_i << "] (PhysRes: " << std::showpos << physical_rate << std::noshowpos << " Hz): Amp (%) = " << 100* amplitude << std::endl;
+                            //if (!params.noconsoleamplitude << std::endl;
                             x_coords_iter_rate_fit.push_back(static_cast<double>(physical_rate));
                             y_values_iter_rate_fit.push_back(static_cast<double>(amplitude));
                         } else { all_points_valid_iter_rate = false; if (!params.noconsole) logger << "      Rate[i=" << current_i << "]: Out of bounds" << std::endl; }
