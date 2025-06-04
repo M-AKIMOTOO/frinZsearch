@@ -18,8 +18,8 @@
 #include <vector>
 #include <filesystem> // For directory creation (C++17)
 #include <limits>     // For std::numeric_limits
-#include <thread>     // For std::thread::hardware_concurrency
-#include "frinZargs.hpp" // Include the new header for ProgramOptions and arg functions
+//#include <thread>     // For std::thread::hardware_concurrency
+#include "frinZargs.hpp" // ★ この行が正しく存在することを確認してください
 #include "frinZread.hpp" // Include the new header for file reading functions and HeaderRegion
 #include "frinZlogger.hpp"    // Include the new Logger header
 #include "frinZparamcal.hpp" // For parameter calculation
@@ -240,33 +240,18 @@ int main(int argc, char* argv[]) {
     ProgramOptions params;
     Logger logger;
     
-
-    CLI::App app{"frinZsearch: Fringe Z Search Program"};
-    // Set up command line options using the function from frinZargs.cpp
-    setup_cli_options(app, params);
-
-    // If no arguments (other than program name) are given, print help and exit.
-    if (argc == 1) {
-        std::cout << app.help() << std::endl;
-        return 0;
-    }
-
-
-    // Parse the arguments. CLI11 will handle --help, --version, and errors.
-    try {
-        app.parse(argc, argv);
-    } catch (const CLI::ParseError &e) {
-        return app.exit(e); // Prints error message and exits
-    }
-
-    // Finalize options based on parsed values (e.g., dependencies between options)
-    try {
-        finalize_options(params, app);
-    } catch (const CLI::ValidationError &e) { // Catch validation errors from finalize_options
-        std::cerr << "Validation Error: " << e.what() << std::endl;
+    // Parse arguments using the new function from frinZargs.cpp
+    // This function handles --help, --version, and basic parsing errors.
+    if (!parse_arguments(argc, argv, params)) {
+        // parse_arguments will print help/version or error messages.
+        // Return 1 indicates an error or that help/version was displayed.
         return 1;
     }
 
+    // Post-process options (e.g., create output directory, set dependent options)
+    post_process_options(params);
+
+    /*
     // Initialize FFTW threads support
     if (!fftwf_init_threads()) {
         std::cerr << "Error: Failed to initialize FFTW threads support." << std::endl;
@@ -277,6 +262,7 @@ int main(int argc, char* argv[]) {
         int nthreads = std::thread::hardware_concurrency()/2;
         fftwf_plan_with_nthreads(nthreads > 0 ? nthreads : 1); // Use at least 1 thread
     }
+        */
 
     // Setup logger (output_dir_final is now set by finalize_options)
     std::string text_log_file_full_path_str;
@@ -1049,7 +1035,7 @@ int main(int argc, char* argv[]) {
         } 
     
     
-    fftwf_cleanup_threads();
+    //fftwf_cleanup_threads();
     
 
     return 0;

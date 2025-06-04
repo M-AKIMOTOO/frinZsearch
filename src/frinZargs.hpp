@@ -4,8 +4,7 @@
 #include <string>
 #include <vector>
 #include <limits>
-#include <filesystem> // For ProgramOptions output_dir_final if needed here, or just string
-#include <CLI/CLI.hpp> // Command-line parser library
+#include <filesystem>
 
 // ProgramOptions 構造体の定義
 struct ProgramOptions {
@@ -13,7 +12,7 @@ struct ProgramOptions {
     double specified_length_sec = -1.0;
     double skip_seconds = 0.0;
     int loop_count = 1;
-    int iterations = 5;
+    int iterations = 3;
     bool iter_explicitly_set = false;
     std::string output_dir_final;
     std::string output_calibrated_filename_base = "calibrated_fft_amplitude";
@@ -37,10 +36,11 @@ struct ProgramOptions {
     int rate_fit_points = 3;  // Number of points for rate fit (center +/- (N-1)/2 )
 };
 
-// CLI::Appオブジェクトにオプションを設定する関数
-void setup_cli_options(CLI::App& app, ProgramOptions& params);
+// 引数を解析し、ProgramOptions 構造体に設定する関数
+// 成功した場合は true、ヘルプ/バージョン表示やエラーの場合は false を返す
+bool parse_arguments(int argc, char* argv[], ProgramOptions& params);
 
 // パース後にオプションを最終処理する関数
-void finalize_options(ProgramOptions& params, CLI::App& app);
+void post_process_options(ProgramOptions& params);
 
 #endif // FRINZARGS_HPP
