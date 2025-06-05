@@ -61,6 +61,7 @@ void print_help(const char* prog_name) {
     std::cout << "    --header              入力ファイルからヘッダー情報を出力" << std::endl;
     std::cout << "    --quick               位相較正をスキップし，初期FFT結果のみ出力" << std::endl;
     std::cout << "    --noconsole           コンソール出力を抑制 (--output 指定時はファイル出力)" << std::endl;
+    std::cout << "    --Rayleigh            時間領域のフリンジのヒストグラムと累積分布関数を csv 出力 (ファイル名.rayleigh.csv)" << std::endl;
     std::cout << "    --help                このヘルプメッセージを表示して終了" << std::endl;
     std::cout << "    --version             バージョン情報を表示して終了" << std::endl;
     std::cout << "" << std::endl;
@@ -236,6 +237,8 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
             params.output_header_info = true;
         } else if (arg == "--quick") {
             params.quick_mode = true;
+        } else if (arg == "--Rayleigh") {
+            params.output_rayleigh_csv = true;
         } else if (arg == "--noconsole") {
             params.noconsole = true;
         }
@@ -267,11 +270,13 @@ void post_process_options(ProgramOptions& params) {
     //     params.iterations = 0;
     // }
 
-    if (params.enable_text_log_output) {
+    // --output または --Rayleigh が指定された場合、出力ディレクトリを設定
+    if (params.enable_text_log_output || params.output_rayleigh_csv) {
         if (params.input_filename.empty()) { 
             // このケースは parse_arguments でチェックされるはずですが，念のため
-            std::cerr << "致命的なエラー: --output が有効ですが，入力ファイル名が空です．これは予期しない状態です．" << std::endl;
-            params.enable_text_log_output = false; 
+            std::cerr << "致命的なエラー: 出力オプションが有効ですが，入力ファイル名が空です．これは予期しない状態です．" << std::endl;
+            params.enable_text_log_output = false; // Disable general log output if input is missing
+            params.output_rayleigh_csv = false;    // Disable Rayleigh CSV output if input is missing
         } else {
             namespace fs = std::filesystem;
             fs::path input_file_path_fs(params.input_filename);
@@ -283,7 +288,8 @@ void post_process_options(ProgramOptions& params) {
                 fs::create_directories(params.output_dir_final);
             } catch (const fs::filesystem_error& e) {
                 std::cerr << "エラー: 出力ディレクトリ '" << params.output_dir_final << "' の作成に失敗しました: " << e.what() << std::endl;
-                params.enable_text_log_output = false; // Disable if dir creation fails
+                params.enable_text_log_output = false; // Disable general log output if dir creation fails
+                params.output_rayleigh_csv = false;    // Disable Rayleigh CSV output if dir creation fails
                 params.output_dir_final.clear();
             }
         }

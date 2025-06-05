@@ -53,8 +53,8 @@ FileData read_binary_file_data(const std::string& filepath, Logger& logger, bool
             logger << "Station2 Position: (" << result.header.station2_pos_x << ", " << result.header.station2_pos_y << ", " << result.header.station2_pos_z << ")\n";
             logger << "Station2 Key: " << std::string(result.header.station2_key, 8).c_str() << "\n";
             logger << "Source Name: " << std::string(result.header.source_name, 16).c_str() << "\n";
-            logger << "Source RA: " << result.header.source_ra << "\n";
-            logger << "Source Dec: " << result.header.source_dec << std::endl << std::endl;
+            logger << "Source RA: " << result.header.source_ra << " rad\n";
+            logger << "Source Dec: " << result.header.source_dec << " rad" << std::endl;
         }
     }
 

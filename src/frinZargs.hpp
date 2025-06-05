@@ -34,6 +34,7 @@ struct ProgramOptions {
     bool enable_text_log_output = false;
     int delay_fit_points = 3; // Number of points for delay fit (center +/- (N-1)/2 )
     int rate_fit_points = 3;  // Number of points for rate fit (center +/- (N-1)/2 )
+    bool output_rayleigh_csv = false; // For --Rayleigh option
 };
 
 // 引数を解析し、ProgramOptions 構造体に設定する関数

@@ -251,19 +251,6 @@ int main(int argc, char* argv[]) {
     // Post-process options (e.g., create output directory, set dependent options)
     post_process_options(params);
 
-    /*
-    // Initialize FFTW threads support
-    if (!fftwf_init_threads()) {
-        std::cerr << "Error: Failed to initialize FFTW threads support." << std::endl;
-        // It might still be possible to run in single-threaded mode,
-        // or you might choose to exit. For now, we'll just print an error.
-    } else {
-        // Determine the number of threads to use (e.g., number of hardware cores)
-        int nthreads = std::thread::hardware_concurrency()/2;
-        fftwf_plan_with_nthreads(nthreads > 0 ? nthreads : 1); // Use at least 1 thread
-    }
-        */
-
     // Setup logger (output_dir_final is now set by finalize_options)
     std::string text_log_file_full_path_str;
     if (params.enable_text_log_output) {
@@ -278,6 +265,13 @@ int main(int argc, char* argv[]) {
     }
 
     logger.setup(!params.noconsole, params.enable_text_log_output, text_log_file_full_path_str);
+
+    // If --header is specified, print header info and exit.
+    if (params.output_header_info) {
+        // Logger is already set up. read_binary_file_data will use it.
+        FileData header_data = read_binary_file_data(params.input_filename, logger, true); // Force header output
+        return header_data.success ? 0 : 1; // Exit after printing header
+    }
 
     if (params.enable_text_log_output && !params.output_dir_final.empty() && !params.noconsole) {
         logger << "Output directory for all files: " << params.output_dir_final << std::endl;
@@ -644,8 +638,8 @@ int main(int argc, char* argv[]) {
         write_2d_float_vector_to_csv(fft_shifted_amplitude, initial_fft_heatmap_filename, logger, params.noconsole);
     }
 
-
     // === Step 3.5: FFT後の振幅の最大値とその座標を検索 ===
+    // Rayleigh CSV出力やその後のイテレーションで使用するため、この時点で計算する
     FftPeakParameters initial_peak_params;
     if (!fft_shifted_amplitude.empty()) {
         initial_peak_params = calculate_fft_peak_parameters(
@@ -668,6 +662,86 @@ int main(int argc, char* argv[]) {
 
     float refined_delay_from_first_fit_samples = initial_peak_params.physical_delay_samples;
     float refined_rate_from_first_fit_hz = initial_peak_params.physical_rate_hz;
+
+
+
+    // === (追加) --Rayleigh オプションによる振幅ヒストグラムとCDFのCSV出力 ===
+    // --output の有無に関わらず --Rayleigh が指定されていれば出力する
+    if (params.output_rayleigh_csv && !params.input_filename.empty() && !fft_shifted_amplitude.empty()) {
+        if (!params.noconsole) logger << "Calculating amplitude histogram and CDF for Rayleigh CSV output..." << std::endl;
+
+        std::vector<float> amplitude_values_1d;
+        float min_val = std::numeric_limits<float>::max();
+        float max_val = std::numeric_limits<float>::lowest();
+
+        for (const auto& row : fft_shifted_amplitude) {
+            for (float val : row) {
+                amplitude_values_1d.push_back(val);
+                if (val < min_val) min_val = val;
+                if (val > max_val) max_val = val;
+            }
+        }
+
+        if (!amplitude_values_1d.empty()) {
+            // output_dir_final が空の場合 (例: --Rayleigh のみ指定で --output なし)、カレントディレクトリに出力
+            std::string output_directory_for_rayleigh = params.output_dir_final;
+            if (output_directory_for_rayleigh.empty()) {
+                output_directory_for_rayleigh = "."; // カレントディレクトリ
+            }
+
+            int num_bins = 1000; // ビン数は固定またはオプションで変更可能にする
+            // データに基づいてビン幅を決定 (0除算を避ける)
+            float bin_width = (max_val > min_val) ? (max_val - min_val) / num_bins : 1.0f;
+            if (bin_width < 1e-9f) bin_width = 1e-9f; // 最小ビン幅
+
+            std::vector<int> histogram(num_bins, 0);
+            for (float amp : amplitude_values_1d) {
+                int bin_index = static_cast<int>((amp - min_val) / bin_width);
+                // 最後のビンに最大値が含まれるように調整
+                if (amp == max_val) bin_index = num_bins - 1; 
+                
+                if (bin_index >= 0 && bin_index < num_bins) {
+                    histogram[bin_index]++;
+                }
+            }
+
+            std::vector<float> cdf(num_bins, 0.0f);
+            long long cumulative_count = 0; // Use long long for potentially large counts
+            for (int i = 0; i < num_bins; ++i) {
+                cumulative_count += histogram[i];
+                cdf[i] = static_cast<float>(cumulative_count) / amplitude_values_1d.size();
+            }
+
+            std::string rayleigh_csv_filename = (fs::path(output_directory_for_rayleigh) / (fs::path(params.input_filename).stem().string() + ".rayleigh.csv")).string();
+            std::ofstream rayleigh_file(rayleigh_csv_filename);
+            if (rayleigh_file.is_open()) {
+                if (!params.noconsole) logger << "Writing histogram and CDF to " << rayleigh_csv_filename << std::endl;
+
+                // コメント行としてピークパラメータを追記
+                rayleigh_file << "# Amplitude Histogram and CDF Data\n";
+                rayleigh_file << "# Initial FFT Peak Parameters:\n";
+                rayleigh_file << std::fixed << std::setprecision(8); // 精度を合わせる
+                rayleigh_file << "# Max Amplitude: " << initial_peak_params.max_amplitude << "\n";
+                rayleigh_file << "# Peak Delay (samples): " << initial_peak_params.physical_delay_samples << "\n";
+                rayleigh_file << "# Peak Rate (Hz): " << initial_peak_params.physical_rate_hz << "\n";
+                rayleigh_file << "# SNR (Max/NoiseLevel): " << initial_peak_params.snr << "\n";
+                rayleigh_file << "# Histogram Parameters:\n";
+                rayleigh_file << "# Number of Bins: " << num_bins << "\n";
+                rayleigh_file << "# Min Amplitude for Binning: " << min_val << "\n";
+                rayleigh_file << "# Max Amplitude for Binning: " << max_val << "\n";
+                rayleigh_file << "# Bin Width: " << bin_width << "\n";
+                rayleigh_file << "AmplitudeBinCenter,FrequencyCount,CDF\n"; // ヘッダー行
+                for (int i = 0; i < num_bins; ++i) {
+                    rayleigh_file << std::fixed << std::setprecision(8) << min_val + (static_cast<float>(i) + 0.5f) * bin_width << "," << histogram[i] << "," << cdf[i] << "\n";
+                }
+                rayleigh_file.close();
+            } else {
+                if (!params.noconsole) logger << "Error: Could not open file for writing Rayleigh data: " << rayleigh_csv_filename << std::endl;
+            }
+        } else {
+            if (!params.noconsole) logger << "No amplitude data to generate Rayleigh CSV." << std::endl;
+        }
+    }
 
     
     
