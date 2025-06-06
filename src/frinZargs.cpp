@@ -44,7 +44,7 @@ void print_help(const char* prog_name) {
     std::cout << "" << std::endl;
     std::cout << "使用法: frinZsearch --input <file>" << " [オプション]" << std::endl;
     std::cout << "オプション:" << std::endl;
-    std::cout << "    --input <file>        入力バイナリファイ，ルを指定 (必須)" << std::endl;
+    std::cout << "    --input <file>        入力バイナリファイルを指定 (必須)" << std::endl;
     std::cout << "    --length <seconds>    FFTセグメントの積分時間を指定 (秒，デフォルト: 全データ)" << std::endl;
     std::cout << "    --skip <seconds>      データの先頭からスキップする時間を指定 (秒，デフォルト: 0.0)" << std::endl;
     std::cout << "    --loop <count>        FFT処理をセグメントごとにループする回数 (デフォルト: 1)" << std::endl;
