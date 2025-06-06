@@ -141,7 +141,7 @@ std::vector<std::vector<float>> generate_shifted_amplitude_plane(
         float scale_factor_horizontal_ifft = 0.0f;
         // N_rows_original_data is the number of actual data rows (sectors) used for this FFT
         if (N_rows_original_data > 0 && N_cols_padded_fft_dim > 0) { 
-            scale_factor_horizontal_ifft = (1/ static_cast<float>(N_cols_padded_fft_dim)) ; 
+            scale_factor_horizontal_ifft = 1 / (effective_integ_length * N_rows_original_data); 
         } else if (N_cols_padded_fft_dim > 0) { // Fallback if N_rows_original_data is 0 (should not happen if data is present)
              scale_factor_horizontal_ifft =  static_cast<float>(N_cols_padded_fft_dim);
              // No logger here as this function is more generic and logger is not passed
@@ -540,13 +540,21 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            // fft_in のインデックスは i * N_cols_fft + j
+            int buffer_index = i * N_cols_fft + j; // fft_in のインデックス
+
             if (is_rfi_channel) {
-                fft_in[i * N_cols_fft + j][0] = 0.0f;
-                fft_in[i * N_cols_fft + j][1] = 0.0f;
+                fft_in[buffer_index][0] = 0.0f;
+                fft_in[buffer_index][1] = 0.0f;
             } else {
-                fft_in[i * N_cols_fft + j][0] = current_all_spectrums[static_cast<size_t>(i)][static_cast<size_t>(j)].real();
-                fft_in[i * N_cols_fft + j][1] = current_all_spectrums[static_cast<size_t>(i)][static_cast<size_t>(j)].imag();
+                fft_in[buffer_index][0] = current_all_spectrums[static_cast<size_t>(i)][static_cast<size_t>(j)].real();
+                fft_in[buffer_index][1] = current_all_spectrums[static_cast<size_t>(i)][static_cast<size_t>(j)].imag();
+            }
+
+            // 周波数軸のDC成分(j=0、つまり各時間サンプルのスペクトルの0Hz成分)をカット
+            // RFI処理の後に行うことで、RFIで既に0にされていても問題ありません。
+            if (j == 0) {
+                fft_in[buffer_index][0] = 0.0f;
+                fft_in[buffer_index][1] = 0.0f;
             }
         }
     }
@@ -572,7 +580,7 @@ int main(int argc, char* argv[]) {
     // Original: norm_factor = header.fft_point / (N_rows_padded * N_cols_fft)
     // Since new N_cols_fft is header.fft_point, this simplifies to:
     // norm_factor = N_cols_fft / (N_rows_padded * N_cols_fft) = 1.0f / N_rows_padded
-    const float norm_factor = 1; //static_cast<float>(loaded_data.header.fft_point) / static_cast<float>(N_rows_padded * N_cols_fft);
+    const float norm_factor = 1 / (current_segment_num_sectors * first_effective_integration_length); //static_cast<float>(loaded_data.header.fft_point) / static_cast<float>(N_rows_padded * N_cols_fft);
     if (current_segment_num_sectors > 0 && std::abs(first_effective_integration_length) > 1e-9f) {
         if (!params.noconsole) {
             logger << "Applying normalization factor (" << norm_factor << ") after vertical FFT." << std::endl;
@@ -611,7 +619,7 @@ int main(int argc, char* argv[]) {
     if (N_cols_fft > 0) {
         float scale_factor_horizontal_ifft = 0.0f;
         if (current_segment_num_sectors > 0 && N_cols_fft > 0) { // Avoid division by zero
-            scale_factor_horizontal_ifft = (1 / static_cast<float>(N_cols_fft));
+            scale_factor_horizontal_ifft = 1 ; 
         } else if (N_cols_fft > 0) { // Fallback if sectors is 0, just scale by N_cols_fft
             scale_factor_horizontal_ifft = 1.0f; // Or perhaps 1.0f / N_cols_fft if N_rows_original is 0
             if (!params.noconsole) logger << "Warning: current_segment_num_sectors is 0 for horizontal IFFT scaling. Using 1/N_cols_fft only." << std::endl;
