@@ -122,7 +122,7 @@ std::vector<std::vector<float>> generate_shifted_amplitude_plane(
 
     // Apply normalization to fft_intermediate_buffer (consistent with main loop's initial FFT)
     // N_rows_padded_fft is header.fft_point. Factor simplifies to 1.0f / N_cols_padded_fft_dim.
-    const float norm_factor =  1; //static_cast<float>(file_data_ref.header.fft_point) / static_cast<float>(N_rows_padded_fft);
+    const float norm_factor =  effective_integ_length; //static_cast<float>(file_data_ref.header.fft_point) / static_cast<float>(N_rows_padded_fft);
     if (N_rows_original_data > 0 && std::abs(effective_integ_length) > 1e-9f) { // Condition from main loop
         for (int r = 0; r < N_rows_padded_fft; ++r) {
             for (int c = 0; c < N_cols_padded_fft_dim; ++c) {
@@ -597,7 +597,7 @@ int main(int argc, char* argv[]) {
     if (N_cols_fft > 0) {
         float scale_factor_horizontal_ifft = 0.0f;
         if (current_segment_num_sectors > 0 && N_cols_fft > 0) { // Avoid division by zero
-            scale_factor_horizontal_ifft = 1 ; 
+            scale_factor_horizontal_ifft = first_effective_integration_length ; 
         } else if (N_cols_fft > 0) { // Fallback if sectors is 0, just scale by N_cols_fft
             scale_factor_horizontal_ifft = 1.0f; // Or perhaps 1.0f / N_cols_fft if N_rows_original is 0
             if (!params.noconsole) logger << "Warning: current_segment_num_sectors is 0 for horizontal IFFT scaling. Using 1/N_cols_fft only." << std::endl;
@@ -812,7 +812,7 @@ int main(int argc, char* argv[]) {
                 if (all_points_valid_for_rate_fit && x_coords_rate_fit.size() == static_cast<size_t>(params.rate_fit_points)) {
                     // --- Rateフィッティングのためのスケーリング ---
                     std::vector<double> scaled_x_coords_rate_fit = x_coords_rate_fit;
-                    const double rate_scale_factor = (10*N_rows_padded);
+                    const double rate_scale_factor = (10*N_rows_padded) * first_effective_integration_length;
                     for (double& x_val : scaled_x_coords_rate_fit) {
                         x_val *= rate_scale_factor;
                     }
@@ -1012,7 +1012,7 @@ int main(int argc, char* argv[]) {
                     if (all_points_valid_iter_rate && x_coords_iter_rate_fit.size() == static_cast<size_t>(params.rate_fit_points)) {
                         // --- Rateフィッティングのためのスケーリング (イテレーション中) ---
                         std::vector<double> scaled_x_coords_iter_rate_fit = x_coords_iter_rate_fit;
-                        const double iter_rate_scale_factor = (10*N_rows_padded); // 初期フィッティングと同じファクターを使用
+                        const double iter_rate_scale_factor = (10*N_rows_padded) * first_effective_integration_length; // 初期フィッティングと同じファクターを使用
                         for (double& x_val : scaled_x_coords_iter_rate_fit) {
                             x_val *= iter_rate_scale_factor;
                         }
