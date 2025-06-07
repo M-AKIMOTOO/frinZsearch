@@ -19,12 +19,13 @@
 #include <filesystem> // For directory creation (C++17)
 #include <limits>     // For std::numeric_limits
 //#include <thread>     // For std::thread::hardware_concurrency
-#include "frinZargs.hpp" // ★ この行が正しく存在することを確認してください
+#include "frinZargs.hpp" 
 #include "frinZread.hpp" // Include the new header for file reading functions and HeaderRegion
 #include "frinZlogger.hpp"    // Include the new Logger header
 #include "frinZparamcal.hpp" // For parameter calculation
 #include "frinZfftshift.hpp" // For fftshift and amplitude calculation
 #include "frinZfitting.hpp" 
+namespace fs = std::filesystem; // Declare fs alias here for wider scope
 
 
 // Generates the 2D shifted amplitude plane for given correction parameters
@@ -207,32 +208,6 @@ FftPeakParameters run_iterative_fft_and_find_peak(
         trial_params.message = "Shifted amplitude data empty in iterative FFT helper.";
     }
     return trial_params;
-}
-
-// Helper function to write 2D float vector to a CSV file
-void write_2d_float_vector_to_csv(const std::vector<std::vector<float>>& data, const std::string& filename, Logger& logger, bool noconsole) {
-    if (data.empty()) {
-        if (!noconsole) logger << "Data to write to " << filename << " is empty. Skipping." << std::endl;
-        return;
-    }
-
-    std::ofstream outfile(filename);
-    if (!outfile.is_open()) {
-        if (!noconsole) logger << "Error: Could not open file for writing: " << filename << std::endl;
-        return;
-    }
-
-    if (!noconsole) logger << "Writing 2D data to " << filename << "..." << std::endl;
-    outfile << std::fixed << std::setprecision(8); 
-
-    for (size_t i = 0; i < data.size(); ++i) {
-        for (size_t j = 0; j < data[i].size(); ++j) {
-            outfile << data[i][j] << (j < data[i].size() - 1 ? "," : "");
-        }
-        outfile << "\n";
-    }
-    outfile.close();
-    if (!noconsole) logger << "Finished writing to " << filename << "." << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -597,6 +572,9 @@ int main(int argc, char* argv[]) {
             logger << "Skipping normalization after vertical FFT due to zero sectors or zero integration length." << std::endl;
         }
     }
+
+
+    
     
     // === Step 2c: 横方向 (行ごと) の1D FFT ===
     int rank_horiz = 1;
@@ -638,13 +616,6 @@ int main(int argc, char* argv[]) {
 
     // === Step 3: fftshiftと振幅計算 ===
     std::vector<std::vector<float>> fft_shifted_amplitude = perform_fftshift_and_calc_amplitude(fft_out, N_rows_padded, N_cols_padded_fft);
-    
-    // Output initial FFT shifted amplitude for heatmap
-     namespace fs = std::filesystem; // Declare fs alias here for wider scope
-    if (params.enable_text_log_output && !params.output_dir_final.empty()) {
-        std::string initial_fft_heatmap_filename = (fs::path(params.output_dir_final) / (fs::path(params.input_filename).stem().string() + "_loop" + std::to_string(loop_idx+1) + "_initial_fft_heatmap.csv")).string();
-        write_2d_float_vector_to_csv(fft_shifted_amplitude, initial_fft_heatmap_filename, logger, params.noconsole);
-    }
 
     // === Step 3.5: FFT後の振幅の最大値とその座標を検索 ===
     // Rayleigh CSV出力やその後のイテレーションで使用するため、この時点で計算する
@@ -672,8 +643,7 @@ int main(int argc, char* argv[]) {
     float refined_rate_from_first_fit_hz = initial_peak_params.physical_rate_hz;
 
 
-
-    // === (追加) --Rayleigh オプションによる振幅ヒストグラムとCDFのCSV出力 ===
+     // === (追加) --Rayleigh オプションによる振幅ヒストグラムとCDFのCSV出力 ===
     // --output の有無に関わらず --Rayleigh が指定されていれば出力する
     if (params.output_rayleigh_csv && !params.input_filename.empty() && !fft_shifted_amplitude.empty()) {
         if (!params.noconsole) logger << "Calculating amplitude histogram and CDF for Rayleigh CSV output..." << std::endl;
@@ -751,8 +721,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    
-    
     if (initial_peak_params.success) {
         // Declare refined parameters here to be accessible by Step 4
         // Initialize with values from initial peak parameters as a default.
@@ -945,10 +913,6 @@ int main(int argc, char* argv[]) {
                     rfi_index_ranges,
                     loaded_data, first_effective_integration_length
                 );
-            if (params.enable_text_log_output && !params.output_dir_final.empty()) {
-                    std::string iter_fft_heatmap_filename = (fs::path(params.output_dir_final) / (fs::path(params.input_filename).stem().string() + "_loop" + std::to_string(loop_idx+1) + "_iter" + std::to_string(iter+1) + "_fft_heatmap.csv")).string();
-                    write_2d_float_vector_to_csv(iter_fft_shifted_amplitude, iter_fft_heatmap_filename, logger, params.noconsole);
-                }
 
                 FftPeakParameters iter_peak_params;
                 if (!iter_fft_shifted_amplitude.empty()) {

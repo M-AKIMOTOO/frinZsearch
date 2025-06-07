@@ -91,7 +91,7 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
         } else if (arg == "--version") {
             print_version();
             return false; // バージョン表示後，処理を続行しない
-        } else if (arg == "--input") {
+        } else if (arg == "--input" || arg == "--in" || arg == "--inp" || arg == "--inpu") { // Example: --in, --inp, --inpu
             if (i + 1 < argc) {
                 params.input_filename = argv[++i];
                 if (!std::filesystem::exists(params.input_filename) || !std::filesystem::is_regular_file(params.input_filename)) {
@@ -99,17 +99,17 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
                     return false;
                 }
             } else {
-                std::cerr << "エラー: --input にはファイル名が必要です．" << std::endl;
+                std::cerr << "エラー: " << arg << " にはファイル名が必要です．" << std::endl;
                 return false;
             }
-        } else if (arg == "--length") {
+        } else if (arg == "--length"|| arg == "--le" || arg == "--len" || arg == "--leng") {
             if (i + 1 < argc) {
                 if (!string_to_double(argv[++i], params.specified_length_sec)) return false;
             } else {
                 std::cerr << "エラー: --length には秒数が必要です．" << std::endl;
                 return false;
             }
-        } else if (arg == "--skip") {
+        } else if (arg == "--skip" || arg == "--sk" || arg == "--ski") {
             if (i + 1 < argc) {
                 if (!string_to_double(argv[++i], params.skip_seconds)) return false;
                 if (params.skip_seconds < 0) {
@@ -120,7 +120,7 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
                 std::cerr << "エラー: --skip には秒数が必要です．" << std::endl;
                 return false;
             }
-        } else if (arg == "--loop") {
+        } else if (arg == "--loop" || arg == "--lo" || arg == "--loo") {
             if (i + 1 < argc) {
                 if (!string_to_int(argv[++i], params.loop_count)) return false;
                 if (params.loop_count <= 0) {
@@ -131,7 +131,7 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
                 std::cerr << "エラー: --loop には回数が必要です．" << std::endl;
                 return false;
             }
-        } else if (arg == "--iter") {
+        } else if (arg == "--iter" || arg == "--it" || arg == "--ite") {
             if (i + 1 < argc) {
                 if (!string_to_int(argv[++i], params.iterations)) return false;
                 if (params.iterations < 0) {
@@ -143,9 +143,9 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
                 std::cerr << "エラー: --iter には回数が必要です．" << std::endl;
                 return false;
             }
-        } else if (arg == "--output") {
+        } else if (arg == "--output" || arg == "--ou" || arg == "--out" || arg == "--outp") {
             params.enable_text_log_output = true;
-        } else if (arg == "--frequency") {
+        } else if (arg == "--frequency" || arg == "--fr" || arg == "--fre" || arg == "--freq") {
             params.frequency_mode = true;
         } else if (arg == "--rfi") {
             while (i + 1 < argc && (argv[i+1][0] != '-' || (argv[i+1][0] == '-' && argv[i+1][1] != '-'))) {
@@ -175,7 +175,7 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
                 if (!string_to_double(argv[++i], params.initial_delay_samples)) return false;
                 params.initial_delay_specified = true;
             } else {
-                std::cerr << "エラー: --delay にはサンプル数が必要です．" << std::endl;
+                std::cerr << "エラー: " << arg << " にはサンプル数が必要です．" << std::endl;
                 return false;
             }
         } else if (arg == "--rate") {
@@ -183,7 +183,7 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
                 if (!string_to_double(argv[++i], params.initial_rate_hz)) return false;
                 params.initial_rate_specified = true;
             } else {
-                std::cerr << "エラー: --rate にはHz値が必要です．" << std::endl;
+                std::cerr << "エラー: " << arg << " にはHz値が必要です．" << std::endl;
                 return false;
             }
         } else if (arg == "--drange") {
@@ -196,7 +196,7 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
                 }
                 params.delay_search_range_specified = true;
             } else {
-                std::cerr << "エラー: --drange には 2 つの数値 (min_samp max_samp) が必要です．" << std::endl;
+                std::cerr << "エラー: " << arg << " には 2 つの数値 (min_samp max_samp) が必要です．" << std::endl;
                 return false;
             }
         } else if (arg == "--rrange") {
@@ -209,38 +209,38 @@ bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {
                 }
                 params.rate_search_range_specified = true;
             } else {
-                std::cerr << "エラー: --rrange には2つの数値 (min_Hz max_Hz) が必要です．" << std::endl;
+                std::cerr << "エラー: " << arg << " には2つの数値 (min_Hz max_Hz) が必要です．" << std::endl;
                 return false;
             }
         } else if (arg == "--dstep") {
             if (i + 1 < argc) {
                 if (!string_to_int(argv[++i], params.delay_fit_points)) return false;
                 if (params.delay_fit_points < 3 || params.delay_fit_points % 2 == 0) {
-                    std::cerr << "エラー: --dstep の値は（3, 5, 7）のいずれである必要があります．" << std::endl;
+                    std::cerr << "エラー: " << arg << " の値は（3, 5, 7）のいずれである必要があります．" << std::endl;
                     return false;
                 }
             } else {
-                std::cerr << "エラー: --dstep には点数（3, 5, 7）が必要です．" << std::endl;
+                std::cerr << "エラー: " << arg << " には点数（3, 5, 7）が必要です．" << std::endl;
                 return false;
             }
         } else if (arg == "--rstep") {
             if (i + 1 < argc) {
                 if (!string_to_int(argv[++i], params.rate_fit_points)) return false;
                  if (params.rate_fit_points < 3 || params.rate_fit_points % 2 == 0) {
-                    std::cerr << "エラー: --rstep の値は（3, 5, 7）のいずれである必要があります．" << std::endl;
+                    std::cerr << "エラー: " << arg << " の値は（3, 5, 7）のいずれである必要があります．" << std::endl;
                     return false;
                 }
             } else {
-                std::cerr << "エラー: --rstep には点数（3, 5, 7）が必要です．" << std::endl;
+                std::cerr << "エラー: " << arg << " には点数（3, 5, 7）が必要です．" << std::endl;
                 return false;
             }
-        } else if (arg == "--header") {
+        } else if (arg == "--header" || arg == "--he" || arg == "--hea" || arg == "--head") {
             params.output_header_info = true;
-        } else if (arg == "--quick") {
+        } else if (arg == "--quick" || arg == "--q" || arg == "--qu" || arg == "--qui" || arg == "--quic") {
             params.quick_mode = true;
-        } else if (arg == "--Rayleigh") {
+        } else if (arg == "--Rayleigh" || arg == "--Ra" || arg == "--Ray" || arg == "--Rayl") {
             params.output_rayleigh_csv = true;
-        } else if (arg == "--noconsole") {
+        } else if (arg == "--noconsole" || arg == "--n"  || arg == "--no" || arg == "--noc" || arg == "--noco") {
             params.noconsole = true;
         }
          else {
