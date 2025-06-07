@@ -71,9 +71,10 @@ void print_help(const char* prog_name) {
 
 void print_version() {
     std::cout << "frinZsearch v0.1 in 2025/05/31 (Made by M.AKIMOTO with Gemini)    \n"
-                 "frinZsearch v1.0 in 2025/06/01   \n"
-                 "frinZsearch v2.0 in 2025/06/03   \n"
-                 "frinZsearch v3.0 in 2025/06/06     " << std::endl;
+                 "            v1.0 in 2025/06/01   \n"
+                 "            v2.0 in 2025/06/03   \n"
+                 "            v3.0 in 2025/06/06   \n"
+                 "            v3.0 in 2025/06/07     " << std::endl;
 }
 
 bool parse_arguments(int argc, char* argv[], ProgramOptions& params) {

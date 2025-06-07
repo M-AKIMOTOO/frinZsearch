@@ -643,7 +643,7 @@ int main(int argc, char* argv[]) {
     float refined_rate_from_first_fit_hz = initial_peak_params.physical_rate_hz;
 
 
-     // === (追加) --Rayleigh オプションによる振幅ヒストグラムとCDFのCSV出力 ===
+    // === (追加) --Rayleigh オプションによる振幅ヒストグラムとCDFのCSV出力 ===
     // --output の有無に関わらず --Rayleigh が指定されていれば出力する
     if (params.output_rayleigh_csv && !params.input_filename.empty() && !fft_shifted_amplitude.empty()) {
         if (!params.noconsole) logger << "Calculating amplitude histogram and CDF for Rayleigh CSV output..." << std::endl;
@@ -812,7 +812,7 @@ int main(int argc, char* argv[]) {
                 if (all_points_valid_for_rate_fit && x_coords_rate_fit.size() == static_cast<size_t>(params.rate_fit_points)) {
                     // --- Rateフィッティングのためのスケーリング ---
                     std::vector<double> scaled_x_coords_rate_fit = x_coords_rate_fit;
-                    const double rate_scale_factor = 100.0;
+                    const double rate_scale_factor = 1/N_rows_padded;
                     for (double& x_val : scaled_x_coords_rate_fit) {
                         x_val *= rate_scale_factor;
                     }
@@ -1012,7 +1012,7 @@ int main(int argc, char* argv[]) {
                     if (all_points_valid_iter_rate && x_coords_iter_rate_fit.size() == static_cast<size_t>(params.rate_fit_points)) {
                         // --- Rateフィッティングのためのスケーリング (イテレーション中) ---
                         std::vector<double> scaled_x_coords_iter_rate_fit = x_coords_iter_rate_fit;
-                        const double iter_rate_scale_factor = 100.0; // 初期フィッティングと同じファクターを使用
+                        const double iter_rate_scale_factor = 1/N_rows_padded; // 初期フィッティングと同じファクターを使用
                         for (double& x_val : scaled_x_coords_iter_rate_fit) {
                             x_val *= iter_rate_scale_factor;
                         }
