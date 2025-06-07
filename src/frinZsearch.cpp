@@ -812,7 +812,7 @@ int main(int argc, char* argv[]) {
                 if (all_points_valid_for_rate_fit && x_coords_rate_fit.size() == static_cast<size_t>(params.rate_fit_points)) {
                     // --- Rateフィッティングのためのスケーリング ---
                     std::vector<double> scaled_x_coords_rate_fit = x_coords_rate_fit;
-                    const double rate_scale_factor = 1/N_rows_padded;
+                    const double rate_scale_factor = (10*N_rows_padded);
                     for (double& x_val : scaled_x_coords_rate_fit) {
                         x_val *= rate_scale_factor;
                     }
@@ -1012,7 +1012,7 @@ int main(int argc, char* argv[]) {
                     if (all_points_valid_iter_rate && x_coords_iter_rate_fit.size() == static_cast<size_t>(params.rate_fit_points)) {
                         // --- Rateフィッティングのためのスケーリング (イテレーション中) ---
                         std::vector<double> scaled_x_coords_iter_rate_fit = x_coords_iter_rate_fit;
-                        const double iter_rate_scale_factor = 1/N_rows_padded; // 初期フィッティングと同じファクターを使用
+                        const double iter_rate_scale_factor = (10*N_rows_padded); // 初期フィッティングと同じファクターを使用
                         for (double& x_val : scaled_x_coords_iter_rate_fit) {
                             x_val *= iter_rate_scale_factor;
                         }
