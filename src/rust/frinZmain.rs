@@ -551,6 +551,23 @@ fn main() {
                                 logger.log_fmt(format_args!("最終ディレイ補正量: {:.8} samples", accumulated_delay_correction_samples));
                             }
 
+                            // Rayleigh CSV出力
+                            if args.rayleigh {
+                                if let Some(output_dir) = &args.output_dir_final {
+                                    if let Err(e) = write_rayleigh_csv(
+                                        output_dir,
+                                        &input_basename,
+                                        &initial_peak_params,
+                                        &amplitude, // 初期FFTの振幅データ
+                                        &logger,
+                                    ) {
+                                        logger.log_fmt(format_args!("Rayleigh CSVの作成に失敗しました: {}", e));
+                                    }
+                                } else {
+                                    logger.log_fmt(format_args!("出力ディレクトリが設定されていないため、Rayleigh CSVを作成できません。"));
+                                }
+                            }
+
                         }
                         Err(e) => {
                             logger.log_fmt(format_args!("初期ピークパラメータ計算エラー: {}", e));
@@ -566,4 +583,84 @@ fn main() {
             logger.log_fmt(format_args!("ファイル読み込みエラー: {}", e));
         }
     }
+}
+
+// Rayleigh分布のヒストグラムとCDFをCSVファイルに出力する関数
+fn write_rayleigh_csv(
+    output_dir: &PathBuf,
+    input_basename: &str,
+    peak_params: &frinZfft::FftPeakParameters,
+    amplitude_data: &Vec<Vec<f32>>,
+    logger: &frinZlogger::Logger,
+) -> Result<(), frinZerror::FrinZError> {
+    use std::fs::File;
+    use std::io::Write;
+
+    // ファイルパスの構築
+    let output_filename = format!("{}.rayleigh.csv", input_basename);
+    let output_filepath = output_dir.join(output_filename);
+
+    let mut file = File::create(&output_filepath)
+        .map_err(|e| frinZerror::FrinZError::Io(e))?;
+
+    // ヒストグラムの計算
+    let mut all_amplitudes: Vec<f32> = amplitude_data.iter().flatten().cloned().collect();
+    if all_amplitudes.is_empty() {
+        return Err(frinZerror::FrinZError::Logic("振幅データが空のため、Rayleigh CSVを作成できません。".to_string()));
+    }
+    all_amplitudes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let min_amplitude = *all_amplitudes.first().unwrap_or(&0.0);
+    let max_amplitude = *all_amplitudes.last().unwrap_or(&0.0);
+
+    const NUM_BINS: usize = 1000;
+    let bin_width = if max_amplitude > min_amplitude {
+        (max_amplitude - min_amplitude) / NUM_BINS as f32
+    } else {
+        // 全ての振幅が同じ場合、またはデータが1点の場合
+        // bin_widthを0にするとゼロ除算になるので、適当な小さい値にするか、エラーを返す
+        // ここでは、ヒストグラムの出力は意味がないので、エラーを返す
+        return Err(frinZerror::FrinZError::Logic("振幅データの範囲がゼロのため、Rayleigh CSVを作成できません。".to_string()));
+    };
+
+    let mut bins: Vec<usize> = vec![0; NUM_BINS];
+    for &amp in &all_amplitudes {
+        if amp >= min_amplitude && amp <= max_amplitude && bin_width > 0.0 {
+            let mut bin_index = ((amp - min_amplitude) / bin_width) as usize;
+            if bin_index >= NUM_BINS {
+                bin_index = NUM_BINS - 1; // 最大値がちょうどmax_amplitudeの場合の調整
+            }
+            bins[bin_index] += 1;
+        }
+    }
+
+    // ヘッダー情報の書き込み
+    writeln!(file, "# Amplitude Histogram and CDF Data").map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Initial FFT Peak Parameters:").map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Max Amplitude: {:.8}", peak_params.max_amplitude).map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Peak Delay (samples): {:.8}", peak_params.physical_delay_samples).map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Peak Rate (Hz): {:.8}", peak_params.physical_rate_hz).map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# SNR (Max/NoiseLevel): {:.8}", peak_params.snr).map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Histogram Parameters:").map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Number of Bins: {}", NUM_BINS).map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Min Amplitude for Binning: {:.8}", min_amplitude).map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Max Amplitude for Binning: {:.8}", max_amplitude).map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "# Bin Width: {:.8}", bin_width).map_err(|e| frinZerror::FrinZError::Io(e))?;
+    writeln!(file, "Bin,Frequency,CDF").map_err(|e| frinZerror::FrinZError::Io(e))?;
+
+    let total_count = all_amplitudes.len() as f32;
+    let mut cumulative_count = 0;
+
+    for i in 0..NUM_BINS {
+        let bin_center = min_amplitude + (i as f32 + 0.5) * bin_width;
+        let frequency_count = bins[i];
+        cumulative_count += frequency_count;
+        let cdf = cumulative_count as f32 / total_count;
+
+        writeln!(file, "{:.8},{:.8},{:.8}", bin_center, frequency_count, cdf)
+            .map_err(|e| frinZerror::FrinZError::Io(e))?;
+    }
+
+    logger.log_fmt(format_args!("Rayleigh CSVファイル '{}' を作成しました。", output_filepath.display()));
+    Ok(())
 }
