@@ -1,0 +1,569 @@
+use clap::Parser;
+use std::path::PathBuf;
+use std::f64::INFINITY;
+use std::fs;
+use chrono::{TimeZone, Utc};
+
+mod frinZread;
+mod frinZfft;
+mod frinZfitting;
+mod frinZlogger;
+mod frinZerror;
+
+/// フリンジサーチを行うプログラム
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// 入力バイナリファイルを指定 (必須)
+    #[arg(short, long)]
+    input: String,
+
+    /// FFTセグメントの積分時間を指定 (秒，デフォルト: 全データ)
+    #[arg(long, default_value_t = -1.0)]
+    length: f64,
+
+    /// データの先頭からスキップする時間を指定 (秒，デフォルト: 0.0)
+    #[arg(long, default_value_t = 0.0)]
+    skip: f64,
+
+    /// FFT処理をセグメントごとにループする回数 (デフォルト: 1)
+    #[arg(long, default_value_t = 1)]
+    loop_count: usize,
+
+    /// 位相較正のイテレーション回数 (デフォルト: 3)
+    #[arg(long, default_value_t = 3)]
+    iter: usize,
+
+    /// コンソールメッセージとデータファイルを入力ファイル基準の 'frinZ/frinZsearch' サブディレクトリに出力
+    #[arg(long)]
+    output: bool,
+
+    /// 最初のFFTのみ実行し，較正/イテレーションなし
+    #[arg(long)]
+    frequency: bool,
+
+    /// RFI周波数範囲をMHzで指定 (例: --rfi 10,50 --rfi 100,120)
+    #[arg(long, value_parser = parse_rfi_range)]
+    rfi: Vec<(f64, f64)>,
+
+    /// 初期遅延補正 (サンプル単位，デフォルト: 0.0)
+    #[arg(long, default_value_t = 0.0)]
+    delay: f64,
+
+    /// 初期レート補正 (Hz単位，デフォルト: 0.0)
+    #[arg(long, default_value_t = 0.0)]
+    rate: f64,
+
+    /// 較正時の遅延探索範囲を制限 [min_samp max_samp]
+    #[arg(long, num_args = 2, value_names = ["MIN_SAMP", "MAX_SAMP"], default_values_t = [-INFINITY, INFINITY], value_delimiter = ' ', allow_negative_numbers = true)]
+    drange: Vec<f64>,
+
+    /// 較正時のレート探索範囲を制限 [min_Hz max_Hz]
+    #[arg(long, num_args = 2, value_names = ["MIN_HZ", "MAX_HZ"], default_values_t = [-INFINITY, INFINITY], value_delimiter = ' ', allow_negative_numbers = true)]
+    rrange: Vec<f64>,
+
+    /// 遅延二次フィッティングの点数 (3, 5 or 7，デフォルト: 3)
+    #[arg(long, default_value_t = 3)]
+    dstep: usize,
+
+    /// レート二次フィッティングの点数 (3, 5 or 7，デフォルト: 3)
+    #[arg(long, default_value_t = 3)]
+    rstep: usize,
+
+    /// 入力ファイルからヘッダー情報を出力
+    #[arg(long)]
+    header: bool,
+
+    /// 位相較正をスキップし，初期FFT結果のみ出力
+    #[arg(long)]
+    quick: bool,
+
+    /// コンソール出力を抑制 (--output 指定時はファイル出力)
+    #[arg(long)]
+    noconsole: bool,
+
+    /// 時間領域のフリンジのヒストグラムと累積分布関数を csv 出力 (ファイル名.rayleigh.csv)
+    #[arg(long)]
+    rayleigh: bool,
+
+    // 内部使用のためのフィールド
+    #[arg(skip)]
+    output_dir_final: Option<PathBuf>,
+    #[arg(skip)]
+    delay_search_range_specified: bool,
+    #[arg(skip)]
+    rate_search_range_specified: bool,
+    #[arg(skip)]
+    initial_delay_specified: bool,
+    #[arg(skip)]
+    initial_rate_specified: bool,
+}
+
+// --rfi オプションのパーサーヘルパー
+fn parse_rfi_range(s: &str) -> Result<(f64, f64), String> {
+    let parts: Vec<&str> = s.split(',').collect();
+    if parts.len() != 2 {
+        return Err(format!("RFI範囲の形式が無効です: {}. 期待される形式: start_mhz,end_mhz", s));
+    }
+    let start = parts[0].parse::<f64>().map_err(|e| format!("RFI開始周波数のパースに失敗しました: {}", e))?;
+    let end = parts[1].parse::<f64>().map_err(|e| format!("RFI終了周波数のパースに失敗しました: {}", e))?;
+    if start < 0.0 || end < 0.0 || start > end {
+        return Err(format!("RFI範囲が無効です: {}. 周波数は非負で start <= end である必要があります。", s));
+    }
+    Ok((start, end))
+}
+
+// 引数の後処理を行う関数
+fn post_process_args(args: &mut Args) {
+    // frequency_mode または quick_mode が指定された場合、イテレーションを0にする
+    if args.frequency || args.quick {
+        args.iter = 0;
+    }
+
+    // drange/rrange がデフォルト値以外の場合、指定されたとマーク
+    if args.drange[0] != -INFINITY || args.drange[1] != INFINITY {
+        args.delay_search_range_specified = true;
+    }
+    if args.rrange[0] != -INFINITY || args.rrange[1] != INFINITY {
+        args.rate_search_range_specified = true;
+    }
+
+    // delay/rate がデフォルト値以外の場合、指定されたとマーク
+    if args.delay != 0.0 {
+        args.initial_delay_specified = true;
+    }
+    if args.rate != 0.0 {
+        args.initial_rate_specified = true;
+    }
+
+    // --output または --Rayleigh が指定された場合、出力ディレクトリを設定
+    if args.output || args.rayleigh {
+        let input_path = PathBuf::from(&args.input);
+        if let Some(parent) = input_path.parent() {
+            let base_output_dir = parent.to_path_buf();
+            let output_path = base_output_dir.join("frinZ").join("frinZsearch");
+            args.output_dir_final = Some(output_path);
+        } else {
+            eprintln!("エラー: 入力ファイルのパスから親ディレクトリを特定できません。");
+        }
+    }
+}
+
+fn main() {
+    let mut args = Args::parse();
+    post_process_args(&mut args);
+
+    let mut logger = frinZlogger::Logger::new();
+    let mut log_filepath: Option<String> = None;
+
+    if let Some(output_dir) = &args.output_dir_final {
+        if args.output {
+            let input_path = PathBuf::from(&args.input);
+            if let Some(file_stem) = input_path.file_stem() {
+                let log_filename = format!("{}_frinZsearch_result.txt", file_stem.to_string_lossy());
+                log_filepath = Some(output_dir.join(log_filename).to_string_lossy().into_owned());
+            }
+        }
+        // ディレクトリが存在しない場合は作成
+        if let Err(e) = fs::create_dir_all(output_dir) {
+            logger.log_fmt(format_args!("エラー: 出力ディレクトリ '{}' の作成に失敗しました: {}", output_dir.display(), e));
+            // ディレクトリ作成失敗時はファイルロギングを無効化
+            args.output = false;
+            args.rayleigh = false;
+            log_filepath = None;
+        }
+    }
+
+    if let Err(e) = logger.setup(!args.noconsole, args.output, log_filepath.as_deref()) {
+        logger.log_fmt(format_args!("ロガーのセットアップエラー: {}", e));
+        return;
+    }
+
+    // ヘッダー情報出力モードの場合
+    if args.header {
+        match frinZread::read_binary_file_data(&args.input) {
+            Ok(file_data) => {
+                logger.log_fmt(format_args!("=== ヘッダー情報 ==="));
+                let magic_word = file_data.header.magic_word;
+                let header_version = file_data.header.header_version;
+                let software_version = file_data.header.software_version;
+                let sampling_speed = file_data.header.sampling_speed;
+                let observed_sky_freq = file_data.header.observed_sky_freq;
+                let fft_point = file_data.header.fft_point;
+                let num_sector = file_data.header.num_sector;
+                let station1_name = String::from_utf8_lossy(&file_data.header.station1_name).trim_end_matches('\0').to_string();
+                let station1_pos_x = file_data.header.station1_pos_x;
+                let station1_pos_y = file_data.header.station1_pos_y;
+                let station1_pos_z = file_data.header.station1_pos_z;
+                let station1_key = String::from_utf8_lossy(&file_data.header.station1_key).trim_end_matches('\0').to_string();
+                let station2_name = String::from_utf8_lossy(&file_data.header.station2_name).trim_end_matches('\0').to_string();
+                let station2_pos_x = file_data.header.station2_pos_x;
+                let station2_pos_y = file_data.header.station2_pos_y;
+                let station2_pos_z = file_data.header.station2_pos_z;
+                let station2_key = String::from_utf8_lossy(&file_data.header.station2_key).trim_end_matches('\0').to_string();
+                let source_name = String::from_utf8_lossy(&file_data.header.source_name).trim_end_matches('\0').to_string();
+                let source_ra = file_data.header.source_ra;
+                let source_dec = file_data.header.source_dec;
+
+                logger.log_fmt(format_args!("Magic Word: {:#X}", magic_word));
+                logger.log_fmt(format_args!("Header Version: {}", header_version));
+                logger.log_fmt(format_args!("Software Version: {}", software_version));
+                logger.log_fmt(format_args!("Sampling Speed: {} Hz", sampling_speed));
+                logger.log_fmt(format_args!("Observed Sky Freq: {} Hz", observed_sky_freq));
+                logger.log_fmt(format_args!("FFT Point: {}", fft_point));
+                logger.log_fmt(format_args!("Number of Sectors in file: {}", num_sector));
+                logger.log_fmt(format_args!("Station1 Name: {}", station1_name));
+                logger.log_fmt(format_args!("Station1 Position: ({}, {}, {})", station1_pos_x, station1_pos_y, station1_pos_z));
+                logger.log_fmt(format_args!("Station1 Key: {}", station1_key));
+                logger.log_fmt(format_args!("Station2 Name: {}", station2_name));
+                logger.log_fmt(format_args!("Station2 Position: ({}, {}, {})", station2_pos_x, station2_pos_y, station2_pos_z));
+                logger.log_fmt(format_args!("Station2 Key: {}", station2_key));
+                logger.log_fmt(format_args!("Source Name: {}", source_name));
+                logger.log_fmt(format_args!("Source RA: {} rad", source_ra));
+                logger.log_fmt(format_args!("Source Dec: {} rad", source_dec));
+                logger.log_fmt(format_args!("--------------------"));
+            }
+            Err(e) => {
+                logger.log_fmt(format_args!("ファイル読み込みエラー: {}", e));
+            }
+        }
+        return; // ヘッダー表示モードの場合はここで終了
+    }
+
+    // 通常の処理
+    logger.log_fmt(format_args!("--- 入力パラメータ ---"));
+    logger.log_fmt(format_args!("入力ファイル: {}", args.input));
+    logger.log_fmt(format_args!("イテレーション回数: {}", args.iter));
+    logger.log_fmt(format_args!("--------------------"));
+
+    // ファイル読み込み処理
+    match frinZread::read_binary_file_data(&args.input) {
+        Ok(file_data) => {
+            logger.log_fmt(format_args!("ファイル読み込み成功！"));
+
+            let n_rows_original = file_data.spectrum_data.len();
+            let n_cols_original = if n_rows_original > 0 { file_data.spectrum_data[0].len() } else { 0 };
+
+            if n_rows_original == 0 || n_cols_original == 0 {
+                logger.log_fmt(format_args!("エラー: 読み込んだデータが空です。"));
+                return;
+            }
+
+            let n_rows_padded = n_rows_original.next_power_of_two() *4;
+            let n_cols_padded = file_data.header.fft_point as usize;
+
+            // C++版の出力に合わせるための情報
+            let input_file_path_fs = PathBuf::from(&args.input);
+            let input_basename = input_file_path_fs.file_name().unwrap().to_string_lossy();
+            let source_name = String::from_utf8_lossy(&file_data.header.source_name).trim_end_matches('\0').to_string();
+            let first_sector_epoch = file_data.first_sector_epoch_time; 
+            let first_effective_integration_length = file_data.first_effective_integration_length;
+
+            logger.log_fmt(format_args!("\n--- Processing Loop 1/{} ---", args.loop_count));
+            logger.log_fmt(format_args!("Input file: {}", input_basename));
+            logger.log_fmt(format_args!("Target: {}", source_name));
+            // UTC時刻とEpochの表示
+            let start_utc_datetime = Utc.timestamp_opt(first_sector_epoch as i64, 0).unwrap();
+            logger.log_fmt(format_args!("Segment Start UTC: {} UTC (Epoch: {}) (Int.Length: {:.6} s)",
+                                       start_utc_datetime.format("%Y-%j %H:%M:%S"), first_sector_epoch, first_effective_integration_length));
+            // Segment End UTC (approx) は今回は省略
+            logger.log_fmt(format_args!("Processing {} sectors for this loop.", n_rows_original));
+            logger.log_fmt(format_args!("Original Data Dimensions: Vertical (Sectors) = {}, Horizontal (Channels) = {}", n_rows_original, n_cols_original));
+            logger.log_fmt(format_args!("Padded FFT Dimensions: Vertical (N_rows_padded) = {}, Horizontal (N_cols_fft) = {}", n_rows_padded, n_cols_padded));
+            // Normalization factor はFFT内部で処理されるため、ここでは出力しない
+
+            let effective_integration_length = first_effective_integration_length; // 正しい値を使用
+
+            // 初期FFT
+            match frinZfft::perform_2d_fft(
+                &file_data.spectrum_data,
+                n_rows_padded,
+                n_cols_padded,
+                &args.rfi,
+                file_data.header.sampling_speed,
+                file_data.header.fft_point,
+            ) {
+                Ok((amplitude, fft_out_complex_data)) => {
+                    logger.log_fmt(format_args!("初期FFT計算成功！"));
+
+                    match frinZfft::calculate_fft_peak_parameters(
+                        &amplitude,
+                        &fft_out_complex_data,
+                        effective_integration_length,
+                        args.drange[0],
+                        args.drange[1],
+                        args.delay_search_range_specified,
+                        args.rrange[0],
+                        args.rrange[1],
+                        args.rate_search_range_specified,
+                    ) {
+                        Ok(initial_peak_params) => {
+                            logger.log_fmt(format_args!("Initial FFT - StdDev: {:.5e}, SNR (Max/StdDev): {:.4}", 
+                                                        initial_peak_params.stddev_amplitude, initial_peak_params.snr));
+                            logger.log_fmt(format_args!("Maximum FFT amplitude (%): {:.8} (within specified range if any) found at", 
+                                                        100.0 * initial_peak_params.max_amplitude));
+                            logger.log_fmt(format_args!("  Fringe Frequency (Hz): {:.8} (Range: {})", 
+                                                        initial_peak_params.physical_rate_hz, 
+                                                        if args.rate_search_range_specified { format!("[{:.8},{:.8}]", args.drange[0], args.drange[1]) } else { "unrestricted".to_string() }));
+                            logger.log_fmt(format_args!("  Delay (Sample): {:.8} (Range: {})", 
+                                                        initial_peak_params.physical_delay_samples, 
+                                                        if args.delay_search_range_specified { format!("[{:.8},{:.8}]", args.drange[0], args.drange[1]) } else { "unrestricted".to_string() }));
+                            
+                            // Surrounding points and quadratic fit for initial FFT
+                            logger.log_fmt(format_args!("  Surrounding points (Initial FFT Peak at i={}, j={}):", initial_peak_params.max_i, initial_peak_params.max_j));
+                            logger.log_fmt(format_args!("    Delay (fixed rate bin {}):", initial_peak_params.max_i));
+                            let fit_points = args.dstep; // フィッティングに使う点の数 (奇数)
+                            let half_fit_points = (fit_points - 1) / 2;
+
+                            // ディレイ方向のフィッティング
+                            let mut x_coords_delay_fit = Vec::new();
+                            let mut y_values_delay_fit = Vec::new();
+                            for dj in - (half_fit_points as isize) ..= (half_fit_points as isize) {
+                                let current_j = (initial_peak_params.max_j as isize + dj) as usize;
+                                if current_j < n_cols_padded {
+                                    let physical_delay = (n_cols_padded as f64 / 2.0) - current_j as f64;
+                                    x_coords_delay_fit.push(physical_delay);
+                                    y_values_delay_fit.push(amplitude[initial_peak_params.max_i][current_j] as f64);
+                                    logger.log_fmt(format_args!("      Delay[j={}] (Phys: {:.8} samp): Amp (%): {:.8}", current_j, physical_delay, 100.0 * amplitude[initial_peak_params.max_i][current_j]));
+                                } else {
+                                    logger.log_fmt(format_args!("      Delay[j={}]: Out of bounds for fitting", current_j));
+                                }
+                            }
+
+                            let mut refined_delay_from_first_fit_samples = initial_peak_params.physical_delay_samples;
+                            if x_coords_delay_fit.len() == fit_points {
+                                match frinZfitting::fit_quadratic_least_squares(&x_coords_delay_fit, &y_values_delay_fit) {
+                                    Ok(fit_result) => {
+                                        refined_delay_from_first_fit_samples = fit_result.peak_x as f32;
+                                        logger.log_fmt(format_args!("      Quadratic Fit (Delay): Refined Peak Delay (samp) = {:.8}, Max Amp Est (%): {:.8} (Coeffs a={:.8}, b={:.8}, c={:.8})",
+                                                                    fit_result.peak_x, 100.0 * (fit_result.a * fit_result.peak_x * fit_result.peak_x + fit_result.b * fit_result.peak_x + fit_result.c), 
+                                                                    fit_result.a, fit_result.b, fit_result.c));
+                                    }
+                                    Err(e) => {
+                                        logger.log_fmt(format_args!("      Quadratic Fit (Delay) failed: {}. Using non-fitted residual.", e));
+                                    }
+                                }
+                            } else {
+                                logger.log_fmt(format_args!("      Quadratic Fit (Delay): Not enough valid/contiguous data points ({} collected) for {}-point fitting.", x_coords_delay_fit.len(), fit_points));
+                            }
+
+                            // Rate direction fitting
+                            logger.log_fmt(format_args!("    Rate (fixed delay bin {}):", initial_peak_params.max_j));
+                            let fit_points = args.rstep;
+                            let half_fit_points = (fit_points - 1) / 2;
+                            let mut x_coords_rate_fit = Vec::new();
+                            let mut y_values_rate_fit = Vec::new();
+                            for di in - (half_fit_points as isize) ..= (half_fit_points as isize) {
+                                let current_i = (initial_peak_params.max_i as isize + di) as usize;
+                                if current_i < n_rows_padded {
+                                    let physical_rate = if effective_integration_length > 1e-9 && n_rows_padded > 0 {
+                                        let max_fringe_freq = 1.0 / (2.0 * effective_integration_length as f64);
+                                        (current_i as f64 - n_rows_padded as f64 / 2.0)
+                                            * (2.0 * max_fringe_freq / n_rows_padded as f64)
+                                    } else { 0.0 };
+                                    x_coords_rate_fit.push(physical_rate);
+                                    y_values_rate_fit.push(amplitude[current_i][initial_peak_params.max_j] as f64);
+                                    logger.log_fmt(format_args!("      Rate[i={}] (Phys: {:.8} Hz): Amp (%): {:.8}", current_i, physical_rate, 100.0 * amplitude[current_i][initial_peak_params.max_j]));
+                                } else {
+                                    logger.log_fmt(format_args!("      Rate[i={}]: Out of bounds for fitting", current_i));
+                                }
+                            }
+
+                            let mut refined_rate_from_first_fit_hz = initial_peak_params.physical_rate_hz;
+                            if x_coords_rate_fit.len() == fit_points {
+                                let rate_scale_factor = (10.0 * n_rows_padded as f64) * effective_integration_length as f64;
+                                let scaled_x_coords_rate_fit: Vec<f64> = x_coords_rate_fit.iter().map(|&x| x * rate_scale_factor).collect();
+
+                                match frinZfitting::fit_quadratic_least_squares(&scaled_x_coords_rate_fit, &y_values_rate_fit) {
+                                    Ok(mut fit_result) => {
+                                        refined_rate_from_first_fit_hz = (fit_result.peak_x / rate_scale_factor) as f32;
+                                        // 係数を元のスケールに戻す
+                                        fit_result.a *= rate_scale_factor * rate_scale_factor;
+                                        fit_result.b *= rate_scale_factor;
+                                        logger.log_fmt(format_args!("      Quadratic Fit (Rate): Refined Peak Rate (Hz) = {:.8}, Max Amp Est (%): {:.8} (Coeffs a={:.8}, b={:.8}, c={:.8})",
+                                                                    refined_rate_from_first_fit_hz, 100.0 * (fit_result.a * fit_result.peak_x * fit_result.peak_x + fit_result.b * fit_result.peak_x + fit_result.c), 
+                                                                    fit_result.a, fit_result.b, fit_result.c));
+                                    }
+                                    Err(e) => {
+                                        logger.log_fmt(format_args!("      Quadratic Fit (Rate) failed: {}. Using non-fitted residual.", e));
+                                    }
+                                }
+                            } else {
+                                logger.log_fmt(format_args!("      Quadratic Fit (Rate): Not enough valid/contiguous data points ({} collected) for {}-point fitting.", x_coords_rate_fit.len(), fit_points));
+                            }
+
+                            // --delay または --rate が指定されている場合、初期値を上書き
+                            let mut accumulated_rate_correction_hz = refined_rate_from_first_fit_hz;
+                            let mut accumulated_delay_correction_samples = refined_delay_from_first_fit_samples;
+
+                            if args.initial_rate_specified {
+                                accumulated_rate_correction_hz = args.rate as f32;
+                                logger.log_fmt(format_args!("コマンドラインで指定されたレートで初期値を上書き: {} Hz", accumulated_rate_correction_hz));
+                            }
+                            if args.initial_delay_specified {
+                                accumulated_delay_correction_samples = args.delay as f32;
+                                logger.log_fmt(format_args!("コマンドラインで指定されたディレイで初期値を上書き: {} samples", accumulated_delay_correction_samples));
+                            }
+
+                            // quickモードまたはfrequencyモードの場合、イテレーションをスキップ
+                            if args.quick || args.frequency {
+                                logger.log_fmt(format_args!("quickモードまたはfrequencyモードのため、イテレーションをスキップします。"));
+                            } else if args.iter > 0 {
+                                logger.log_fmt(format_args!("\n--- 繰り返し補正開始 ({}回) ---", args.iter));
+
+                                for iter in 0..args.iter {
+                                    logger.log_fmt(format_args!("\n-- イテレーション {}/{} --", iter + 1, args.iter));
+                                    logger.log_fmt(format_args!("適用レート: {:.8} Hz, 適用ディレイ: {:.8} samples",
+                                                 accumulated_rate_correction_hz, accumulated_delay_correction_samples));
+
+                                    // 位相補正を適用
+                                    let corrected_data = frinZfft::apply_phase_correction(
+                                        &file_data.spectrum_data, // 元のデータに補正を適用
+                                        accumulated_rate_correction_hz,
+                                        accumulated_delay_correction_samples,
+                                        effective_integration_length,
+                                        file_data.header.sampling_speed,
+                                        file_data.header.fft_point,
+                                    );
+
+                                    // 補正後のデータでFFT
+                                    match frinZfft::perform_2d_fft(
+                                        &corrected_data,
+                                        n_rows_padded,
+                                        n_cols_padded,
+                                        &args.rfi,
+                                        file_data.header.sampling_speed,
+                                        file_data.header.fft_point,
+                                    ) {
+                                        Ok((iter_amplitude, iter_fft_out_complex_data)) => {
+                                            // 残差ピークパラメータを計算
+                                            match frinZfft::calculate_fft_peak_parameters(
+                                                &iter_amplitude,
+                                                &iter_fft_out_complex_data,
+                                                effective_integration_length,
+                                                args.drange[0],
+                                                args.drange[1],
+                                                args.delay_search_range_specified,
+                                                args.rrange[0],
+                                                args.rrange[1],
+                                                args.rate_search_range_specified,
+                                            ) {
+                                                Ok(iter_peak_params) => {
+                                                    logger.log_fmt(format_args!("  Iter {} FFT - Max Amp (%): {:.8}, SNR: {:.8}, Residual Rate (Hz): {:.8}, Residual Delay (samp): {:.8}",
+                                                                                iter + 1, 100.0 * iter_peak_params.max_amplitude, iter_peak_params.snr, iter_peak_params.physical_rate_hz, iter_peak_params.physical_delay_samples));
+
+                                                    // --- 2次関数フィッティング (残差) ---
+                                                    let fit_points = args.dstep; // フィッティングに使う点の数 (奇数)
+                                                    let half_fit_points = (fit_points - 1) / 2;
+
+                                                    // ディレイ方向のフィッティング
+                                                    let mut x_coords_delay_fit = Vec::new();
+                                                    let mut y_values_delay_fit = Vec::new();
+                                                    for dj in - (half_fit_points as isize) ..= (half_fit_points as isize) {
+                                                        let current_j = (iter_peak_params.max_j as isize + dj) as usize;
+                                                        if current_j < n_cols_padded {
+                                                            let physical_delay = (n_cols_padded as f64 / 2.0) - current_j as f64;
+                                                            x_coords_delay_fit.push(physical_delay);
+                                                            y_values_delay_fit.push(iter_amplitude[iter_peak_params.max_i][current_j] as f64);
+                                                            logger.log_fmt(format_args!("      Delay[j={}] (PhysRes: {:.8} samp): Amp (%): {:.8}", current_j, physical_delay, 100.0 * iter_amplitude[iter_peak_params.max_i][current_j]));
+                                                        }
+                                                    }
+
+                                                    let mut refined_residual_delay = iter_peak_params.physical_delay_samples;
+                                                    if x_coords_delay_fit.len() == fit_points {
+                                                        match frinZfitting::fit_quadratic_least_squares(&x_coords_delay_fit, &y_values_delay_fit) {
+                                                            Ok(fit_result) => {
+                                                                refined_residual_delay = fit_result.peak_x as f32;
+                                                                logger.log_fmt(format_args!("      Quadratic Fit (Iter {} Delay): Refined Residual Delay (samp) = {:.8}", iter + 1, refined_residual_delay));
+                                                            }
+                                                            Err(e) => {
+                                                                logger.log_fmt(format_args!("      Quadratic Fit (Iter {} Delay) failed: {}. Using non-fitted residual.", iter + 1, e));
+                                                            }
+                                                        }
+                                                    } else {
+                                                        logger.log_fmt(format_args!("      Quadratic Fit (Iter {} Delay): Not enough valid points for {}-point fit. Using non-fitted residual.", iter + 1, fit_points));
+                                                    }
+
+                                                    // レート方向のフィッティング
+                                                    let fit_points = args.rstep;
+                                                    let half_fit_points = (fit_points - 1) / 2;
+                                                    let mut x_coords_rate_fit = Vec::new();
+                                                    let mut y_values_rate_fit = Vec::new();
+                                                    for di in - (half_fit_points as isize) ..= (half_fit_points as isize) {
+                                                        let current_i = (iter_peak_params.max_i as isize + di) as usize;
+                                                        if current_i < n_rows_padded {
+                                                            let physical_rate = if effective_integration_length > 1e-9 && n_rows_padded > 0 {
+                                                                let max_fringe_freq = 1.0 / (2.0 * effective_integration_length as f64);
+                                                                (current_i as f64 - n_rows_padded as f64 / 2.0)
+                                                                    * (2.0 * max_fringe_freq / n_rows_padded as f64)
+                                                            } else { 0.0 };
+                                                            x_coords_rate_fit.push(physical_rate);
+                                                            y_values_rate_fit.push(iter_amplitude[current_i][iter_peak_params.max_j] as f64);
+                                                            logger.log_fmt(format_args!("      Rate[i={}] (PhysRes: {:.8} Hz): Amp (%): {:.8}", current_i, physical_rate, 100.0 * iter_amplitude[current_i][iter_peak_params.max_j]));
+                                                        }
+                                                    }
+
+                                                    let mut refined_residual_rate = iter_peak_params.physical_rate_hz;
+                                                    if x_coords_rate_fit.len() == fit_points {
+                                                        let rate_scale_factor = (10.0 * n_rows_padded as f64) * effective_integration_length as f64;
+                                                        let scaled_x_coords_rate_fit: Vec<f64> = x_coords_rate_fit.iter().map(|&x| x * rate_scale_factor).collect();
+
+                                                        match frinZfitting::fit_quadratic_least_squares(&scaled_x_coords_rate_fit, &y_values_rate_fit) {
+                                                            Ok(mut fit_result) => {
+                                                                refined_residual_rate = (fit_result.peak_x / rate_scale_factor) as f32;
+                                                                // 係数を元のスケールに戻す
+                                                                fit_result.a *= rate_scale_factor * rate_scale_factor;
+                                                                fit_result.b *= rate_scale_factor;
+                                                                logger.log_fmt(format_args!("      Quadratic Fit (Iter {} Rate): Refined Residual Rate (Hz) = {:.8} (Coeffs a={:.8}, b={:.8}, c={:.8})",
+                                                                                            iter + 1, refined_residual_rate, fit_result.a, fit_result.b, fit_result.c));
+                                                            }
+                                                            Err(e) => {
+                                                                logger.log_fmt(format_args!("      Quadratic Fit (Iter {} Rate) failed: {}. Using non-fitted residual.", iter + 1, e));
+                                                            }
+                                                        }
+                                                    } else {
+                                                        logger.log_fmt(format_args!("      Quadratic Fit (Iter {} Rate): Not enough valid points for {}-point fit. Using non-fitted residual.", iter + 1, fit_points));
+                                                    }
+
+                                                    // 累積補正量を更新
+                                                    accumulated_rate_correction_hz += refined_residual_rate;
+                                                    accumulated_delay_correction_samples += refined_residual_delay;
+
+                                                    logger.log_fmt(format_args!("  Iter {} - Updated Total Applied Rate: {:.8} Hz, Updated Total Applied Delay: {:.8} samples.",
+                                                                                iter + 1, accumulated_rate_correction_hz, accumulated_delay_correction_samples));
+
+                                                }
+                                                Err(e) => {
+                                                    logger.log_fmt(format_args!("イテレーション中のピークパラメータ計算エラー: {}", e));
+                                                    break; // エラーが発生したらループを抜ける
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            logger.log_fmt(format_args!("イテレーション中のFFT計算エラー: {}", e));
+                                            break; // エラーが発生したらループを抜ける
+                                        }
+                                    }
+                                }
+
+                                logger.log_fmt(format_args!("\n--- 繰り返し補正完了 ---"));
+                                logger.log_fmt(format_args!("最終レート補正量: {:.8} Hz", accumulated_rate_correction_hz));
+                                logger.log_fmt(format_args!("最終ディレイ補正量: {:.8} samples", accumulated_delay_correction_samples));
+                            }
+
+                        }
+                        Err(e) => {
+                            logger.log_fmt(format_args!("初期ピークパラメータ計算エラー: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    logger.log_fmt(format_args!("初期FFT計算エラー: {}", e));
+                }
+            }
+        }
+        Err(e) => {
+            logger.log_fmt(format_args!("ファイル読み込みエラー: {}", e));
+        }
+    }
+}
