@@ -5,13 +5,13 @@ LDFLAGS  = -lm -lfftw3f -lstdc++fs #-lfftw3f_threads -lpthread
 
 # Source files
 SRCS = \
-    src/frinZsearch.cpp   \
-    src/frinZargs.cpp     \
-    src/frinZread.cpp     \
-    src/frinZlogger.cpp   \
-    src/frinZparamcal.cpp \
-    src/frinZfftshift.cpp \
-    src/frinZfitting.cpp
+    src/cpp/frinZsearch.cpp   \
+    src/cpp/frinZargs.cpp     \
+    src/cpp/frinZread.cpp     \
+    src/cpp/frinZlogger.cpp   \
+    src/cpp/frinZparamcal.cpp \
+    src/cpp/frinZfftshift.cpp \
+    src/cpp/frinZfitting.cpp
 
 # Object files (derived from SRCS)
 OBJS = $(SRCS:.cpp=.o)
