@@ -36,7 +36,7 @@ impl Default for FftPeakParameters {
 
 /// 2D FFTを実行し、シフトされた振幅とFFT後の複素数データを計算する
 pub fn perform_2d_fft(
-    input_data: &Vec<Vec<Complex<f32>>>,
+    input_data: &[Vec<Complex<f32>>],
     n_rows_padded: usize, // 縦方向のFFTサイズ (パディング後)
     n_cols_padded: usize, // 横方向のFFTサイズ (パディング後)
     rfi_ranges_mhz: &[(f64, f64)], // RFI範囲 (MHz)
@@ -283,14 +283,14 @@ pub fn calculate_fft_peak_parameters(
 
 /// 入力データに位相補正を適用する
 pub fn apply_phase_correction(
-    input_data: &Vec<Vec<Complex<f32>>>,
+    input_data: &[Vec<Complex<f32>>],
     rate_hz_for_correction: f32,
     delay_samples_for_correction: f32,
     effective_integration_length: f32,
     sampling_speed: u32,
     fft_point: u32,
 ) -> Vec<Vec<Complex<f32>>> {
-    let mut corrected_data = input_data.clone();
+    let mut corrected_data = input_data.to_vec();
 
     let n_rows_original = input_data.len();
     let n_cols_original = if n_rows_original > 0 { input_data[0].len() } else { 0 };
