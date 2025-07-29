@@ -702,7 +702,7 @@ int main(int argc, char* argv[]) {
                 rayleigh_file << "# Max Amplitude: " << initial_peak_params.max_amplitude << "\n";
                 rayleigh_file << "# Peak Delay (samples): " << initial_peak_params.physical_delay_samples << "\n";
                 rayleigh_file << "# Peak Rate (Hz): " << initial_peak_params.physical_rate_hz << "\n";
-                rayleigh_file << "# SNR (Max/NoiseLevel): " << initial_peak_params.snr << "\n";
+                rayleigh_file << "# SNR (Max/NoiseLevel): " << std::setprecision(3) << initial_peak_params.snr << std::setprecision(8) << "\n";
                 rayleigh_file << "# Histogram Parameters:\n";
                 rayleigh_file << "# Number of Bins: " << num_bins << "\n";
                 rayleigh_file << "# Min Amplitude for Binning: " << min_val << "\n";
@@ -937,7 +937,7 @@ int main(int argc, char* argv[]) {
                 if (iter_peak_params.success) {
                     if (!params.noconsole) {
                         logger << "  Iter " << iter + 1 << " FFT - Max Amp (%): " <<  100* iter_peak_params.max_amplitude
-                               << ", SNR: " << iter_peak_params.snr
+                               << ", SNR: " << std::setprecision(3) << iter_peak_params.snr << std::setprecision(8)
                                << ", Residual Rate (Hz): " << iter_peak_params.physical_rate_hz
                                << ", Residual Delay (samp): " << iter_peak_params.physical_delay_samples << std::endl;
                     }

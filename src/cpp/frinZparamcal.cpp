@@ -6,7 +6,7 @@
 #include <complex> // For std::complex, std::abs
 #include <tuple>   // For std::tie
 
-
+/*
 std::pair<float, float> calculate_mean_stddev_from_float_vec(const std::vector<std::vector<float>>& data) {
     double sum = 0.0;
     double sum_sq = 0.0;
@@ -23,7 +23,7 @@ std::pair<float, float> calculate_mean_stddev_from_float_vec(const std::vector<s
     double variance = (sum_sq / count) - (mean * mean);
     return {static_cast<float>(mean), static_cast<float>(std::sqrt(std::max(0.0, variance)))};
 }
-
+*/
 
 struct ComplexStats {
     float mean_real;
@@ -32,6 +32,7 @@ struct ComplexStats {
     float stddev_imag;
 };
 
+/*
 ComplexStats calculate_complex_stats(
     const fftwf_complex* data, 
     int n_rows, 
@@ -70,6 +71,7 @@ ComplexStats calculate_complex_stats(
     }
     return result;
 }
+*/
 
 FftPeakParameters calculate_fft_peak_parameters(
     const std::vector<std::vector<float>>& fft_shifted_amplitude,
@@ -153,9 +155,9 @@ FftPeakParameters calculate_fft_peak_parameters(
     }
 
     // Calculate mean of the (shifted) amplitude data for the SNR numerator
-    float original_mean_amplitude, temp_stddev_not_used_here;
-    std::tie(original_mean_amplitude, temp_stddev_not_used_here) = calculate_mean_stddev_from_float_vec(fft_shifted_amplitude);
-    params_result.mean_amplitude = original_mean_amplitude; // Store the original mean for reference
+    //float original_mean_amplitude, temp_stddev_not_used_here;
+    //std::tie(original_mean_amplitude, temp_stddev_not_used_here) = calculate_mean_stddev_from_float_vec(fft_shifted_amplitude);
+    //params_result.mean_amplitude = original_mean_amplitude; // Store the original mean for reference
 
      // --- SNRの分母となるノイズレベルの計算 (ユーザー指示による変更) ---
     // fft_out_complex_data (unshifted complex FFT data) を使用する
@@ -234,3 +236,4 @@ FftPeakParameters calculate_fft_peak_parameters(
     }
     return params_result;
 }
+
