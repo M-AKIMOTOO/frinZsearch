@@ -84,13 +84,13 @@ struct Args {
     #[arg(long)]
     noconsole: bool,
 
-    /// Output histogram and cumulative distribution function of time-domain fringes to CSV (filename.rayleigh.csv)
+        /// Output histogram and cumulative distribution function of time-domain fringes to CSV (filename.rayleigh.csv)
     #[arg(long)]
-    rayleigh: bool,
+    pub rayleigh: bool,
 
     // Fields for internal use
     #[arg(skip)]
-    output_dir_final: Option<PathBuf>,
+    pub output_dir_final: Option<PathBuf>,
     #[arg(skip)]
     delay_search_range_specified: bool,
     #[arg(skip)]
@@ -105,7 +105,7 @@ struct Args {
 fn parse_rfi_range(s: &str) -> Result<(f64, f64), String> {
     let parts: Vec<&str> = s.split(',').collect();
     if parts.len() != 2 {
-        return Err(format!("Invalid RFI range format: {}. Expected format: start_mhz,end_mhz", s));
+        return Err(format!("Invalid RFI range format: {}. Expected format: start_mhz, end_mhz", s));
     }
     let start = parts[0].parse::<f64>().map_err(|e| format!("Failed to parse RFI start frequency: {}", e))?;
     let end = parts[1].parse::<f64>().map_err(|e| format!("Failed to parse RFI end frequency: {}", e))?;
@@ -618,7 +618,7 @@ fn main() {
                                     logger.log_fmt(format_args!("
 --- Iterative Correction Complete ---"));
                                     logger.log_fmt(format_args!("Final Rate Correction: {:.8} Hz", accumulated_rate_correction_hz));
-                                    logger.log_fmt(format_args!("Final Delay Correction: {:.8} samples", accumulated_delay_correction_samples));
+                                                                    logger.log_fmt(format_args!("Final Delay Correction: {:.8} samples", accumulated_delay_correction_samples));
                                 }
 
                                 // Rayleigh CSV出力

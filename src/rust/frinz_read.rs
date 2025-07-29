@@ -37,6 +37,7 @@ pub struct HeaderRegion {
 
 /// Reads and returns the content of a specified file from the local filesystem.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct FileData {
     pub header: HeaderRegion,
     pub spectrum_data: Vec<Vec<Complex<f32>>>,
