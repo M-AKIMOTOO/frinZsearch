@@ -5,7 +5,7 @@ Rust install: https://www.rust-lang.org/ja/tools/install
 cargo run --bin frinZsearch --release 
 cargo run --bin frinZread --release # for plotting cor-data
 
-# c++ version 
+# C++ version 
 
 make 
 make install
