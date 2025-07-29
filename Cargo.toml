@@ -12,8 +12,12 @@ categories = ["algorithms"]
 keywords = ["fringe"]
 
 [[bin]]
-name = "frinZsearch" # 実行可能ファイルの名前
-path = "src/rust/frinZmain.rs" # main 関数が書かれているファイルのパス
+name = "frinZsearch"
+path = "src/rust/frinZmain.rs"
+
+[[bin]]
+name = "frinZrawvis"
+path = "src/rust/frinz_output.rs"
 
 
 [dependencies]
@@ -22,6 +26,7 @@ chrono = "0.4.41"
 clap = { version = "4.5.41", features = ["derive"] }
 num-complex = "0.4.6"
 rustfft = "6.4.0"
+plotters = { version = "0.3.7", features = ["full_palette"] }
 
 
 [dev-dependencies]
