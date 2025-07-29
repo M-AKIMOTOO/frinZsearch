@@ -1,6 +1,15 @@
-c++ バージョンと Rust バージョンがある．c++ バージョンは make で，Rust バージョンは cargo run --release でコンパイル可能である．
 
+# Rust version 
 Rust install: https://www.rust-lang.org/ja/tools/install
+
+cargo run --bin frinZsearch --release 
+cargo run --bin frinZread --release # for plotting cor-data
+
+# c++ version 
+
+make 
+make install
+
 
 frinZ.py の拡張・補助ツール．frinZ.py は精密にフリンジの位置を推定できないので，それを補うのが frinZsearch である．     
 frinZsearch が推定した delay と rate を用いて frinZ.py を実行することで，遅延較正・位相較正が可能となる．   
