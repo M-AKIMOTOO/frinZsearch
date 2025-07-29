@@ -22,11 +22,11 @@ struct Args {
 
     /// Output the read spectrum to a text file
     #[arg(long)]
-    output_spectrum: bool,
+    output: bool,
 
     /// Generate and save spectrum heatmaps (amplitude and phase)
     #[arg(long)]
-    plot_spectrum: bool,
+    plot: bool,
 }
 
 fn main() {
@@ -65,7 +65,7 @@ fn main() {
                     }
                 }
 
-                if args.plot_spectrum {
+                if args.plot {
                     let amp_filename = format!("{}_heatmap_amp.png", input_basename);
                     let phase_filename = format!("{}_heatmap_phs.png", input_basename);
                     let amp_filepath = dir.join(amp_filename);
