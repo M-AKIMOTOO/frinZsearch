@@ -3,8 +3,13 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -O2
 LDFLAGS  = -lm -lfftw3f -lstdc++fs #-lfftw3f_threads -lpthread
 
-# Source files
-SRCS = \
+# Executable names
+TARGET_SEARCH = frinZsearch
+TARGET_RAWVIS = frinZrawvis
+TARGETS = $(TARGET_SEARCH) $(TARGET_RAWVIS)
+
+# Source files for frinZsearch
+SRCS_SEARCH = \
     src/cpp/frinZsearch.cpp   \
     src/cpp/frinZargs.cpp     \
     src/cpp/frinZread.cpp     \
@@ -13,57 +18,65 @@ SRCS = \
     src/cpp/frinZfftshift.cpp \
     src/cpp/frinZfitting.cpp
 
-# Object files (derived from SRCS)
-OBJS = $(SRCS:.cpp=.o)
+# Source files for frinZread
+SRCS_RAWVIS = \
+    src/cpp/frinZrawvis.cpp   \
+    src/cpp/frinZread.cpp     \
+    src/cpp/frinZoutput.cpp   \
+    src/cpp/frinZlogger.cpp   \
+    src/cpp/frinZargs.cpp
 
-# Executable name
-TARGET = frinZsearch
+# All unique object files
+OBJS_SEARCH = $(SRCS_SEARCH:.cpp=.o)
+OBJS_RAWVIS = $(SRCS_RAWVIS:.cpp=.o)
+OBJS = $(sort $(OBJS_SEARCH) $(OBJS_RAWVIS))
 
 # Default target
-all: $(TARGET)
+all: $(TARGETS)
 
-# Rule to link the executable
-$(TARGET): $(OBJS)
-	$(CXX) $(OBJS) -o $(TARGET) $(LDFLAGS)
+# Rule to link frinZsearch
+$(TARGET_SEARCH): $(OBJS_SEARCH)
+	$(CXX) $(OBJS_SEARCH) -o $(TARGET_SEARCH) $(LDFLAGS)
 	@echo ""
 	@echo "********************************************************************************"
-	@echo "$(TARGET) が正常にビルドされました。"
+	@echo "$(TARGET_SEARCH) が正常にビルドされました。"
+	@echo "********************************************************************************"
+
+# Rule to link frinZread
+$(TARGET_RAWVIS): $(OBJS_RAWVIS)
+	$(CXX) $(OBJS_RAWVIS) -o $(TARGET_RAWVIS) $(LDFLAGS)
 	@echo ""
-	@echo "実行ファイルを PATH/環境変数が通っているディレクトリに移動またはコピーしてください。"
-	@echo "例:"
-	@echo "  sudo mv/cp $(TARGET) /usr/local/bin/"
-	@echo "  mv/cp $(TARGET) ~/bin/  (~/bin がPATHに含まれている場合)"
-	@echo ""
-	@echo "または、'make install' を実行してインストールすることもできます。"
-	@echo "インストール先は Makefile 内の PREFIX や BINDIR 変数で確認・変更できます。"
-	@echo "デフォルトのインストール先: $(BINDIR)"
+	@echo "********************************************************************************"
+	@echo "$(TARGET_RAWVIS) が正常にビルドされました。"
 	@echo "********************************************************************************"
 
 # Rule to compile .cpp files to .o files
-# This is a pattern rule that applies to all .cpp files
-%.o: %.cpp
+src/cpp/%.o: src/cpp/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # インストールターゲット (オプション)
 PREFIX ?= ~
 BINDIR ?= $(PREFIX)/bin
 
-install: $(TARGET)
-	@echo "Installing $(TARGET) to $(BINDIR)..."
+install: $(TARGETS)
+	@echo "Installing $(TARGETS) to $(BINDIR)..."
 	@mkdir -p $(BINDIR)
-	@cp $(TARGET) $(BINDIR)/
-	@echo "$(TARGET) が $(BINDIR)/$(TARGET) にインストールされました。"
+	@for T in $(TARGETS); do \
+		cp $$T $(BINDIR)/; \
+	done
+	@echo "$(TARGETS) が $(BINDIR)/ にインストールされました。"
 	@echo "必要に応じて、$(BINDIR) が PATH/環境変数に含まれていることを確認してください。"
 
 uninstall:
-	@echo "Uninstalling $(TARGET) from $(BINDIR)..."
-	@rm -f $(BINDIR)/$(TARGET)
-	@echo "$(TARGET) がアンインストールされました。"
+	@echo "Uninstalling $(TARGETS) from $(BINDIR)..."
+	@for T in $(TARGETS); do \
+		rm -f $(BINDIR)/$$T; \
+	done
+	@echo "$(TARGETS) がアンインストールされました。"
 
 # Target to clean up object files and the executable
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(TARGETS)
 
 # Phony targets (targets that are not actual files)
-.PHONY: all clean
-
+.PHONY: all clean install uninstall
