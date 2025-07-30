@@ -27,6 +27,10 @@ struct Args {
     /// Generate and save spectrum heatmaps (amplitude and phase)
     #[arg(short, long, aliases = ["p", "pl", "plo"])]
     plot: bool,
+
+    /// Standard deviation for Gaussian blur (for smoother plots)
+    #[arg(short, long, aliases = ["s", "si", "sig", "sigm"], default_value_t = 0.0)]
+    sigma: f32,
 }
 
 fn main() {
@@ -84,7 +88,7 @@ fn main() {
                     let amp_filepath = dir.join(amp_filename);
                     let phase_filepath = dir.join(phase_filename);
 
-                    match plot_spectrum_heatmaps(&amp_filepath, &phase_filepath, &file_data.spectrum_data) {
+                    match plot_spectrum_heatmaps(&amp_filepath, &phase_filepath, &file_data.spectrum_data, args.sigma) {
                         Ok(_) => println!(
                             "Spectrum heatmaps saved to {} and {}",
                             amp_filepath.display(),
@@ -150,10 +154,66 @@ pub fn write_spectrum_to_text<P: AsRef<Path>>(
     Ok(())
 }
 
+fn gaussian_blur_2d(data: &Vec<Vec<f32>>, sigma: f32) -> Vec<Vec<f32>> {
+    if sigma <= 0.0 {
+        return data.clone();
+    }
+
+    let rows = data.len();
+    if rows == 0 { return Vec::new(); }
+    let cols = data[0].len();
+    if cols == 0 { return data.clone(); }
+
+    let kernel_radius = (sigma * 3.0).ceil() as usize;
+    let kernel_size = 2 * kernel_radius + 1;
+    let mut kernel = vec![0.0; kernel_size];
+    let mut kernel_sum = 0.0;
+
+    for i in 0..kernel_size {
+        let x = i as f32 - kernel_radius as f32;
+        kernel[i] = (-0.5 * (x / sigma).powi(2)).exp();
+        kernel_sum += kernel[i];
+    }
+
+    for i in 0..kernel_size {
+        kernel[i] /= kernel_sum;
+    }
+
+    let mut blurred_data = vec![vec![0.0; cols]; rows];
+    let mut temp_data = vec![vec![0.0; cols]; rows];
+
+    // Apply horizontal blur
+    for r in 0..rows {
+        for c in 0..cols {
+            let mut sum = 0.0;
+            for k_idx in 0..kernel_size {
+                let col_idx = (c as isize + k_idx as isize - kernel_radius as isize).clamp(0, cols as isize - 1) as usize;
+                sum += data[r][col_idx] * kernel[k_idx];
+            }
+            temp_data[r][c] = sum;
+        }
+    }
+
+    // Apply vertical blur
+    for r in 0..rows {
+        for c in 0..cols {
+            let mut sum = 0.0;
+            for k_idx in 0..kernel_size {
+                let row_idx = (r as isize + k_idx as isize - kernel_radius as isize).clamp(0, rows as isize - 1) as usize;
+                sum += temp_data[row_idx][c] * kernel[k_idx];
+            }
+            blurred_data[r][c] = sum;
+        }
+    }
+
+    blurred_data
+}
+
 pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     output_path_amplitude: P,
     output_path_phase: P,
     spectrum_data: &Vec<Vec<Complex<f32>>>,
+    sigma: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let output_path_amplitude = output_path_amplitude.as_ref().to_path_buf();
     let output_path_phase = output_path_phase.as_ref().to_path_buf();
@@ -168,7 +228,7 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     let color_bar_width = 50;
     let color_bar_padding = 20; // Padding between chart and color bar
     let main_chart_width = 1000;
-    let total_width_amp = main_chart_width + color_bar_width + color_bar_padding +70;
+    let total_width_amp = main_chart_width + color_bar_width + color_bar_padding +90;
     let total_height_amp = 768;
 
     let root_amp = BitMapBackend::new(&output_path_amplitude, (total_width_amp, total_height_amp));
@@ -177,15 +237,15 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
 
     let (chart_area_amp, color_bar_area_for_amp) = root_amp_drawing_area.split_horizontally(main_chart_width);
 
-    let amplitudes: Vec<f32> = spectrum_data.iter().flatten().map(|c| c.norm()).collect();
-    let max_amp = amplitudes.iter().cloned().fold(0.0, f32::max);
-    let min_amp = amplitudes.iter().cloned().fold(f32::MAX, f32::min);
+    let amplitudes_2d: Vec<Vec<f32>> = spectrum_data.iter().map(|row| row.iter().map(|c| c.norm()).collect()).collect();
+    let blurred_amplitudes = gaussian_blur_2d(&amplitudes_2d, sigma);
+    let max_amp = blurred_amplitudes.iter().flatten().cloned().fold(0.0, f32::max);
+    let min_amp = blurred_amplitudes.iter().flatten().cloned().fold(f32::MAX, f32::min);
 
     let mut chart_amp = ChartBuilder::on(&chart_area_amp)
-        .caption("Complex Spectrum - Amplitude Heatmap", ("sans-serif", 20).into_font())
         .margin(10)
         .x_label_area_size(70)
-        .y_label_area_size(70)
+        .y_label_area_size(90)
         .build_cartesian_2d(0..fft_points, 0..num_sectors)?;
 
     chart_amp.configure_mesh()
@@ -198,7 +258,7 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     chart_amp.draw_series(
         (0..fft_points).flat_map(|x| (0..num_sectors).map(move |y| (x, y)))
         .map(|(x, y)| {
-            let amp = spectrum_data[y][x].norm();
+            let amp = blurred_amplitudes[y][x];
             let color_value = if max_amp > min_amp { (amp - min_amp) / (max_amp - min_amp) } else { 0.0 };
             let color = ViridisRGB.get_color(color_value as f64);
             Rectangle::new([(x, y), (x + 1, y + 1)], color.filled())
@@ -206,8 +266,8 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     )?;
 
     // Draw color bar for amplitude
-    let color_bar_height_for_drawing = total_height_amp as i32 - (10 + 10 + 70 + 25); // total_height - (top_margin + bottom_margin + x_label_area_size)
-    let color_bar_y_offset_for_drawing = 35; // top_margin
+    let color_bar_height_for_drawing = total_height_amp as i32 - (10 + 10 + 70 + 0); // total_height - (top_margin + bottom_margin + x_label_area_size)
+    let color_bar_y_offset_for_drawing = 10; // top_margin
 
     for i in 0..color_bar_height_for_drawing {
         let color_value = i as f64 / color_bar_height_for_drawing as f64;
@@ -219,6 +279,11 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     }
 
     // Add labels to the color bar
+    color_bar_area_for_amp.draw_text(
+        "Amplitude (a.u.)",
+        &TextStyle::from(("sans-serif", 30).into_font()).color(&BLACK).transform(FontTransform::Rotate270),
+        (125, (total_height_amp / 2) as i32 +20),
+    )?;
     let num_labels = 5;
     for i in 0..num_labels {
         let value = min_amp + (max_amp - min_amp) * (i as f32 / (num_labels - 1) as f32);
@@ -248,11 +313,13 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     let (chart_area_phase, color_bar_area_for_phase) = root_phase_drawing_area.split_horizontally(main_chart_width);
 
     let mut chart_phase = ChartBuilder::on(&chart_area_phase)
-        .caption("Complex Spectrum - Phase Heatmap", ("sans-serif", 20).into_font())
         .margin(10)
         .x_label_area_size(70)
-        .y_label_area_size(70)
+        .y_label_area_size(90)
         .build_cartesian_2d(0..fft_points, 0..num_sectors)?;
+
+    let phases_2d: Vec<Vec<f32>> = spectrum_data.iter().map(|row| row.iter().map(|c| c.arg().to_degrees()).collect()).collect();
+    let blurred_phases = gaussian_blur_2d(&phases_2d, sigma);
 
     chart_phase.configure_mesh()
         .x_desc("Channels")
@@ -264,7 +331,7 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     chart_phase.draw_series(
         (0..fft_points).flat_map(|x| (0..num_sectors).map(move |y| (x, y)))
         .map(|(x, y)| {
-            let phase_deg = spectrum_data[y][x].arg().to_degrees();
+            let phase_deg = blurred_phases[y][x];
             // Normalize phase from -180..180 to 0..1 for the color map
             let color_value = (phase_deg + 180.0) / 360.0;
             let color = ViridisRGB.get_color(color_value as f64);
@@ -273,8 +340,8 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     )?;
 
     // Draw color bar for phase
-    let color_bar_height_i32 = total_height_phase as i32 - (10 + 10 + 70 + 25); // total_height - (top_margin + bottom_margin + x_label_area_size)
-    let color_bar_y_offset_i32 = 35; // top_margin
+    let color_bar_height_i32 = total_height_phase as i32 - (10 + 10 + 70 + 0); // total_height - (top_margin + bottom_margin + x_label_area_size)
+    let color_bar_y_offset_i32 = 10; // top_margin
 
     for i in 0..color_bar_height_i32 {
         let color_value = i as f64 / color_bar_height_i32 as f64;
@@ -286,6 +353,11 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     }
 
     // Add labels to the color bar
+    color_bar_area_for_phase.draw_text(
+        "Phase (deg)",
+        &TextStyle::from(("sans-serif", 30).into_font()).color(&BLACK).transform(FontTransform::Rotate270),
+        (90, (total_height_phase / 2) as i32 +20),
+    )?;
     let num_labels = 9;
     for i in 0..num_labels {
         let value = -180.0 + (360.0) * (i as f32 / (num_labels - 1) as f32);
