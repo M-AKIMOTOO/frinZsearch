@@ -1,7 +1,7 @@
 # Compiler and flags
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -O2
-LDFLAGS  = -lm -lfftw3f -lstdc++fs #-lfftw3f_threads -lpthread
+LDFLAGS  = -lm -lfftw3f #-lstdc++fs -lfftw3f_threads -lpthread
 
 # Executable names
 TARGET_SEARCH = frinZsearch
