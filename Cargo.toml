@@ -19,6 +19,10 @@ path = "src/rust/frinZmain.rs"
 name = "frinZrawvis"
 path = "src/rust/frinZrawvis.rs"
 
+[profile.dev]
+opt-level = 3
+debug = false
+codegen-units = 1     # コード生成ユニットを減らし、最適化を強化
 
 [dependencies]
 byteorder = "1.5.0"
@@ -27,7 +31,6 @@ clap = { version = "4.5.41", features = ["derive"] }
 num-complex = "0.4.6"
 rustfft = "6.4.0"
 plotters = { version = "0.3.7", features = ["full_palette"] }
-
 
 [dev-dependencies]
 tempfile = "3.20.0"
