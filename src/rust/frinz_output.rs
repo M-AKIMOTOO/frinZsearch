@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, CommandFactory};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -17,25 +17,38 @@ use frinz_read::{read_binary_file_data, HeaderRegion};
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Specify input binary file (required)
-    #[arg(short, long)]
+    #[arg(short, long, aliases = ["i", "in", "inp", "inpu"])]
     input: String,
 
     /// Output the read spectrum to a text file
-    #[arg(long)]
+    #[arg(short, long, aliases = ["o", "ou", "out", "outp", "outpu"])]
     output: bool,
 
     /// Generate and save spectrum heatmaps (amplitude and phase)
-    #[arg(long)]
+    #[arg(short, long, aliases = ["p", "pl", "plo"])]
     plot: bool,
 }
 
 fn main() {
-    let args = Args::parse();
+    let args = match Args::try_parse() {
+        Ok(args) => args,
+        Err(e) => {
+            // If no arguments are provided, print help and exit
+            if std::env::args().len() <= 1 {
+                let mut cmd = Args::command();
+                cmd.print_help().expect("Failed to print help");
+                std::process::exit(0);
+            } else {
+                // For other parsing errors, let clap handle it (prints error and usage)
+                e.exit();
+            }
+        }
+    };
 
     let output_dir = if args.output || args.plot {
         let input_path = Path::new(&args.input);
         let parent_dir = input_path.parent().unwrap_or_else(|| Path::new("."));
-        let frinz_dir = parent_dir.join("frinZ").join("frinZread");
+        let frinz_dir = parent_dir.join("frinZ").join("frinZrawvis");
         if !frinz_dir.exists() {
             fs::create_dir_all(&frinz_dir).expect("Failed to create output directory");
         }
