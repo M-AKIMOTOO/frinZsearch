@@ -17,7 +17,7 @@ path = "src/rust/frinZmain.rs"
 
 [[bin]]
 name = "frinZrawvis"
-path = "src/rust/frinz_output.rs"
+path = "src/rust/frinZrawvis.rs"
 
 
 [dependencies]
