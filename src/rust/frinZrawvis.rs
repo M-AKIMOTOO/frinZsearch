@@ -225,11 +225,11 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     let fft_points = spectrum_data[0].len();
 
     // --- Amplitude Heatmap ---
-    let color_bar_width = 50;
+    let color_bar_width = 25;
     let color_bar_padding = 20; // Padding between chart and color bar
-    let main_chart_width = 1000;
-    let total_width_amp = main_chart_width + color_bar_width + color_bar_padding +90;
-    let total_height_amp = 768;
+    let main_chart_width = 500;
+    let total_width_amp = main_chart_width + color_bar_width + color_bar_padding +65;
+    let total_height_amp = 384;
 
     let root_amp = BitMapBackend::new(&output_path_amplitude, (total_width_amp, total_height_amp));
     let root_amp_drawing_area = root_amp.into_drawing_area();
@@ -244,15 +244,15 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
 
     let mut chart_amp = ChartBuilder::on(&chart_area_amp)
         .margin(10)
-        .x_label_area_size(70)
-        .y_label_area_size(90)
+        .x_label_area_size(35)
+        .y_label_area_size(45)
         .build_cartesian_2d(0..fft_points, 0..num_sectors)?;
 
     chart_amp.configure_mesh()
         .x_desc("Channels")
         .y_desc("PP")
-        .x_label_style(("sans-serif", 30).into_font())
-        .y_label_style(("sans-serif", 30).into_font())
+        .x_label_style(("sans-serif", 18).into_font())
+        .y_label_style(("sans-serif", 18).into_font())
         .draw()?;
 
     chart_amp.draw_series(
@@ -266,7 +266,7 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     )?;
 
     // Draw color bar for amplitude
-    let color_bar_height_for_drawing = total_height_amp as i32 - (10 + 10 + 70 + 0); // total_height - (top_margin + bottom_margin + x_label_area_size)
+    let color_bar_height_for_drawing = total_height_amp as i32 - (10 + 10 + 70 -35); // total_height - (top_margin + bottom_margin + x_label_area_size)
     let color_bar_y_offset_for_drawing = 10; // top_margin
 
     for i in 0..color_bar_height_for_drawing {
@@ -281,8 +281,8 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     // Add labels to the color bar
     color_bar_area_for_amp.draw_text(
         "Amplitude (a.u.)",
-        &TextStyle::from(("sans-serif", 30).into_font()).color(&BLACK).transform(FontTransform::Rotate270),
-        (125, (total_height_amp / 2) as i32 +20),
+        &TextStyle::from(("sans-serif", 18).into_font()).color(&BLACK).transform(FontTransform::Rotate270),
+        (80, (total_height_amp / 2) as i32 +20),
     )?;
     let num_labels = 5;
     for i in 0..num_labels {
@@ -290,7 +290,7 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
         let y_pos_for_drawing = color_bar_y_offset_for_drawing + color_bar_height_for_drawing - (i as i32 * color_bar_height_for_drawing / (num_labels - 1) as i32);
         color_bar_area_for_amp.draw_text(
             &format!("{:.1e}", value),
-            &TextStyle::from(("sans-serif", 25).into_font()).color(&BLACK),
+            &TextStyle::from(("sans-serif", 18).into_font()).color(&BLACK),
             ((color_bar_width + 5) as i32, y_pos_for_drawing - 7),
         )?;
     }
@@ -300,11 +300,11 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
 
 
     // --- Phase Heatmap ---
-    let color_bar_width = 50;
+    let color_bar_width = 25;
     let color_bar_padding = 30; // Padding between chart and color bar
-    let main_chart_width = 1000;
-    let total_width_phase = main_chart_width + color_bar_width + color_bar_padding +50;
-    let total_height_phase = 768;
+    let main_chart_width = 500;
+    let total_width_phase = main_chart_width + color_bar_width + color_bar_padding +55;
+    let total_height_phase = 384;
 
     let root_phase = BitMapBackend::new(&output_path_phase, (total_width_phase, total_height_phase));
     let root_phase_drawing_area = root_phase.into_drawing_area();
@@ -314,8 +314,8 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
 
     let mut chart_phase = ChartBuilder::on(&chart_area_phase)
         .margin(10)
-        .x_label_area_size(70)
-        .y_label_area_size(90)
+        .x_label_area_size(35)
+        .y_label_area_size(45)
         .build_cartesian_2d(0..fft_points, 0..num_sectors)?;
 
     let phases_2d: Vec<Vec<f32>> = spectrum_data.iter().map(|row| row.iter().map(|c| c.arg().to_degrees()).collect()).collect();
@@ -324,8 +324,8 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     chart_phase.configure_mesh()
         .x_desc("Channels")
         .y_desc("PP")
-        .x_label_style(("sans-serif", 30).into_font())
-        .y_label_style(("sans-serif", 30).into_font())
+        .x_label_style(("sans-serif", 18).into_font())
+        .y_label_style(("sans-serif", 18).into_font())
         .draw()?;
 
     chart_phase.draw_series(
@@ -340,7 +340,7 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     )?;
 
     // Draw color bar for phase
-    let color_bar_height_i32 = total_height_phase as i32 - (10 + 10 + 70 + 0); // total_height - (top_margin + bottom_margin + x_label_area_size)
+    let color_bar_height_i32 = total_height_phase as i32 - (10 + 10 + 70 - 35); // total_height - (top_margin + bottom_margin + x_label_area_size)
     let color_bar_y_offset_i32 = 10; // top_margin
 
     for i in 0..color_bar_height_i32 {
@@ -355,8 +355,8 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
     // Add labels to the color bar
     color_bar_area_for_phase.draw_text(
         "Phase (deg)",
-        &TextStyle::from(("sans-serif", 30).into_font()).color(&BLACK).transform(FontTransform::Rotate270),
-        (90, (total_height_phase / 2) as i32 +20),
+        &TextStyle::from(("sans-serif", 18).into_font()).color(&BLACK).transform(FontTransform::Rotate270),
+        (60, (total_height_phase / 2) as i32 +20),
     )?;
     let num_labels = 9;
     for i in 0..num_labels {
@@ -364,7 +364,7 @@ pub fn plot_spectrum_heatmaps<P: AsRef<Path>>(
         let y_pos_i32 = color_bar_y_offset_i32 + color_bar_height_i32 - (i as i32 * color_bar_height_i32 / (num_labels - 1) as i32);
         color_bar_area_for_phase.draw_text(
             &format!("{:.0}", value),
-            &TextStyle::from(("sans-serif", 30).into_font()).color(&BLACK),
+            &TextStyle::from(("sans-serif", 18).into_font()).color(&BLACK),
             ((color_bar_width + 5) as i32, y_pos_i32 - 7),
         )?;
     }
